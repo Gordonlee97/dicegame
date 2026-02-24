@@ -19,10 +19,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install backend dependencies
+        run: npm ci --omit=dev
+
       - name: Build backend deployment package
         run: |
           mkdir -p backend-dist
           cp server.js package.json package-lock.json backend-dist/
+          cp -r node_modules backend-dist/
           cd backend-dist
           zip -r ../backend.zip .
 
