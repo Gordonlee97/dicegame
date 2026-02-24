@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dice Roller</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main>
+        <section id="join-screen" class="screen" aria-label="Join screen">
+            <h1>Dice Match</h1>
+            <p class="join-subtitle">Enter a name and room to start playing.</p>
+            <section class="join-panel" aria-label="Join match">
+                <label for="player-name">Name</label>
+                <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
+                <label for="room-id">Match</label>
+                <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
+                <button id="join-button" type="button">Join</button>
+            </section>
+            <p id="status" aria-live="polite">Not connected.</p>
+        </section>
+
+        <section id="game-screen" class="screen hidden" aria-label="Game screen">
+            <aside class="players-sidebar" aria-label="Players in match">
+                <h2>Players</h2>
+                <ul id="players-list"></ul>
+                <button id="leave-button" type="button">Leave</button>
+            </aside>
+
+            <section class="game-panel" aria-label="Dice game area">
+                <h1>Dice Match</h1>
+                <p id="status-game" aria-live="polite">Waiting for players...</p>
+                <div class="dice-container">
+                    <div class="die" id="die1" aria-label="Die 1"></div>
+                    <div class="die" id="die2" aria-label="Die 2"></div>
+                    <div class="die" id="die3" aria-label="Die 3"></div>
+                    <div class="die" id="die4" aria-label="Die 4"></div>
+                    <div class="die" id="die5" aria-label="Die 5"></div>
+                </div>
+                <button id="roll-button" type="button" disabled>Roll</button>
+            </section>
+        </section>
+    </main>
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
