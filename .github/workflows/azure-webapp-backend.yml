@@ -26,6 +26,29 @@ jobs:
           cd backend-dist
           zip -r ../backend.zip .
 
+      - name: Validate publish profile secret
+        env:
+          PUBLISH_PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND }}
+          EXPECTED_APP_NAME: dicegame-backend-brgpdrdyh8b9fka2
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          xml = (os.environ.get('PUBLISH_PROFILE_XML') or '').strip()
+          expected = (os.environ.get('EXPECTED_APP_NAME') or '').strip().lower()
+
+          if not xml:
+              print('::error::Missing secret AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND')
+              sys.exit(1)
+
+          if expected and expected not in xml.lower():
+              print('::error::Publish profile secret does not appear to belong to app "dicegame-backend-brgpdrdyh8b9fka2". Download the publish profile from that exact Web App and update the secret.')
+              sys.exit(1)
+
+          print('Publish profile secret is present and appears to match target app name.')
+          PY
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
