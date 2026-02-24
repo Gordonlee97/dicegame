@@ -34,6 +34,7 @@ jobs:
           python - <<'PY'
           import os
           import sys
+          import xml.etree.ElementTree as ET
 
           xml = (os.environ.get('PUBLISH_PROFILE_XML') or '').strip()
           expected = (os.environ.get('EXPECTED_APP_NAME') or '').strip().lower()
@@ -42,11 +43,29 @@ jobs:
               print('::error::Missing secret AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND')
               sys.exit(1)
 
-          if expected and expected not in xml.lower():
-              print('::error::Publish profile secret does not appear to belong to app "dicegame-backend-brgpdrdyh8b9fka2". Download the publish profile from that exact Web App and update the secret.')
+          try:
+            root = ET.fromstring(xml)
+          except ET.ParseError:
+            print('::error::Secret is not valid publish-profile XML. Paste the full file contents from <publishData> to </publishData>.')
+            sys.exit(1)
+
+          profiles = root.findall('.//publishProfile')
+          if not profiles:
+            print('::error::No <publishProfile> entries found in secret XML.')
+            sys.exit(1)
+
+          matching_profiles = []
+          for profile in profiles:
+            site = (profile.attrib.get('msdeploySite') or '').strip().lower()
+            method = (profile.attrib.get('publishMethod') or '').strip()
+            if site == expected:
+              matching_profiles.append(method or 'unknown')
+
+          if not matching_profiles:
+            print('::error::Publish profile XML does not match app "dicegame-backend-brgpdrdyh8b9fka2" (msdeploySite mismatch). Download publish profile from that exact app/slot and update secret.')
               sys.exit(1)
 
-          print('Publish profile secret is present and appears to match target app name.')
+          print(f'Publish profile XML is valid and matches target app. Found methods: {", ".join(matching_profiles)}')
           PY
 
       - name: Deploy to Azure Web App
