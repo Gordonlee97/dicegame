@@ -122,13 +122,46 @@ In Azure Web App CORS settings, allow:
 
 ## Post-deploy smoke test
 
-1. Open the static app URL in two browser tabs.
-2. Join the same room with different player names.
-3. Confirm both players are visible in sidebar.
-4. Confirm only active player can roll.
-5. Confirm both tabs receive live roll updates.
-6. Confirm turn advances after each roll.
-7. Confirm `Leave` returns to join screen.
+### 1) Backend health
+
+PowerShell:
+
+```powershell
+(Invoke-WebRequest https://dicegame-backend-brgpdrdyh8b9fka2.westus3-01.azurewebsites.net/health).Content
+```
+
+Expected:
+
+```json
+{"ok":true}
+```
+
+If the first request times out, wait 30-90 seconds (cold start) and retry.
+
+### 2) Frontend load check
+
+Open:
+
+- `https://icy-hill-04922421e.6.azurestaticapps.net`
+
+Confirm the Join screen appears.
+
+### 3) Two-tab multiplayer check
+
+1. Open the frontend URL in two tabs.
+2. In each tab, use different player names and the same room id.
+3. Click Join in both tabs.
+4. Confirm both players appear in sidebar in both tabs.
+5. Confirm only active player can click Roll.
+6. Roll once and confirm both tabs show live dice updates.
+7. Confirm turn advances to the other player.
+8. Click Leave and confirm return to join screen.
+
+### 4) Quick failure triage
+
+- If join hangs: check backend health endpoint again.
+- If websocket fails: verify frontend `config.js` backend URL is correct.
+- If deployed app is stale: hard refresh browser cache and retry.
 
 ## Known MVP constraints
 
