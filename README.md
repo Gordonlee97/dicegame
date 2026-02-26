@@ -4,6 +4,7 @@
 
 [![Frontend Deploy](https://github.com/Gordonlee97/dicegame/actions/workflows/azure-static-web-apps-icy-hill-04922421e.yml/badge.svg)](https://github.com/Gordonlee97/dicegame/actions/workflows/azure-static-web-apps-icy-hill-04922421e.yml)
 [![Backend Deploy](https://github.com/Gordonlee97/dicegame/actions/workflows/azure-webapp-backend.yml/badge.svg)](https://github.com/Gordonlee97/dicegame/actions/workflows/azure-webapp-backend.yml)
+[![CI Tests](https://github.com/Gordonlee97/dicegame/actions/workflows/ci-tests.yml/badge.svg)](https://github.com/Gordonlee97/dicegame/actions/workflows/ci-tests.yml)
 
 Turn-based multiplayer browser dice prototype (Perudo-style foundation) with a Node.js WebSocket backend and static frontend.
 
@@ -40,6 +41,20 @@ Expected response body:
 {"ok":true}
 ```
 
+## Automated tests
+
+Run locally:
+
+```powershell
+npm test
+```
+
+CI coverage:
+
+- `.github/workflows/ci-tests.yml`
+- Runs on push and pull requests to `main`
+- Executes tests on Node `20` and `22`
+
 ## Deployment runbook
 
 ### 1) Frontend (Azure Static Web App)
@@ -55,6 +70,11 @@ Push to `main` to trigger deployment.
 Backend can be deployed automatically via:
 
 - `.github/workflows/azure-webapp-backend.yml`
+
+Deployment gate:
+
+- Backend deploy runs automatically only after `.github/workflows/ci-tests.yml` completes successfully on `main`.
+- You can still run backend deploy manually with workflow dispatch.
 
 One-time setup required in GitHub repository secrets:
 

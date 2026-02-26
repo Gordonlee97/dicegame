@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dice Roller</title>
+    <title>Perudo MVP</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <main>
         <section id="join-screen" class="screen" aria-label="Join screen">
-            <h1>Dice Match</h1>
+            <h1>Perudo</h1>
             <p class="join-subtitle">Enter a name and room to start playing.</p>
             <section class="join-panel" aria-label="Join match">
                 <label for="player-name">Name</label>
@@ -23,23 +23,66 @@
 
         <section id="game-screen" class="screen hidden" aria-label="Game screen">
             <aside class="players-sidebar" aria-label="Players in match">
-                <h2>Players</h2>
+                <h2>👥 Players</h2>
                 <ul id="players-list"></ul>
                 <button id="leave-button" type="button">Leave</button>
             </aside>
 
             <section class="game-panel" aria-label="Dice game area">
-                <h1>Dice Match</h1>
+                <h1>🎲 Perudo</h1>
                 <p id="status-game" aria-live="polite">Waiting for players...</p>
-                <div class="dice-container">
-                    <div class="die" id="die1" aria-label="Die 1"></div>
-                    <div class="die" id="die2" aria-label="Die 2"></div>
-                    <div class="die" id="die3" aria-label="Die 3"></div>
-                    <div class="die" id="die4" aria-label="Die 4"></div>
-                    <div class="die" id="die5" aria-label="Die 5"></div>
+
+                <div class="game-meta">
+                    <p><strong>Round:</strong> <span id="round-number">-</span></p>
+                    <p><strong>Last bid:</strong> <span id="last-bid">None</span></p>
+                    <p><strong>Palifico:</strong> <span id="palifico-indicator">No</span></p>
                 </div>
-                <button id="roll-button" type="button" disabled>Roll</button>
+
+                <h2>Your Dice</h2>
+                <div id="dice-container" class="dice-container" aria-label="Your dice"></div>
+
+                <section class="actions-panel" aria-label="Bid controls">
+                    <div class="bid-group" aria-label="Quantity options">
+                        <p class="group-label">🔢 Quantity</p>
+                        <div id="quantity-buttons" class="option-buttons"></div>
+                    </div>
+
+                    <div class="bid-group" aria-label="Face options">
+                        <p class="group-label">🎯 Face</p>
+                        <div id="face-buttons" class="option-buttons face-buttons"></div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="bid-button" type="button" disabled>Place Bid</button>
+                        <button id="calza-button" type="button" disabled>Calza</button>
+                        <button id="dudo-button" type="button" disabled>Dudo</button>
+                    </div>
+                </section>
+
+                <section class="resolution-panel" aria-label="Round resolution">
+                    <h2>📣 Last Round</h2>
+                    <p id="resolution-text">No Dudo resolution yet.</p>
+                </section>
             </section>
+
+            <aside class="log-sidebar" aria-label="Action log">
+                <section class="log-panel">
+                    <h2>🧾 Action Log</h2>
+                    <ul id="action-log"></ul>
+                </section>
+            </aside>
+        </section>
+
+        <section id="resolution-modal" class="modal hidden" aria-label="Dudo result">
+            <div class="modal-overlay" id="resolution-modal-overlay"></div>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+                <div class="modal-header">
+                    <h2 id="modal-title">Dudo Reveal</h2>
+                    <button id="modal-close-button" type="button" class="modal-close">Close</button>
+                </div>
+                <p id="modal-summary" class="modal-summary"></p>
+                <div id="modal-reveal-list" class="modal-reveal-list"></div>
+            </div>
         </section>
     </main>
     <script src="config.js"></script>
