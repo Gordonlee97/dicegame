@@ -28,7 +28,8 @@ jobs:
       - name: Build backend deployment package
         run: |
           mkdir -p backend-dist
-          cp server.js package.json package-lock.json backend-dist/
+          cp server.js package.json package-lock.json index.html styles.css script.js config.js backend-dist/
+          cp -r game backend-dist/
           cp -r node_modules backend-dist/
           cd backend-dist
           zip -r ../backend.zip .
