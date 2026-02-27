@@ -41,6 +41,41 @@ Expected response body:
 {"ok":true}
 ```
 
+## Restart vs Refresh (localhost)
+
+Use this rule during local development:
+
+- If you changed backend/runtime code, restart the server.
+- If you changed only frontend static files, keep server running and hard refresh browser.
+
+### Restart server required
+
+Restart `npm start` when editing:
+
+- `server.js`
+- any file under `game/` (for example `game/PerudoGame.js`, `game/GameManager.js`, `game/RuleValidator.js`)
+- `package.json` / `package-lock.json`
+- environment values used by backend (`PORT`, app settings, etc.)
+
+Reason: these changes run inside the Node process; the browser cannot pick them up until the process restarts.
+
+### Browser refresh only
+
+Usually no restart needed when editing:
+
+- `index.html`
+- `styles.css`
+- `script.js`
+- `config.js`
+
+Use hard refresh on localhost (`Ctrl+F5`) to avoid stale cache.
+
+### Practical checklist
+
+1. Changed backend file? Restart server.
+2. Changed frontend file only? Keep server running, hard refresh.
+3. Unsure? Restart once, then test.
+
 ## Automated tests
 
 Run locally:

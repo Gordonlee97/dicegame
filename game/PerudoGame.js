@@ -16,9 +16,6 @@ class PerudoGame {
 
     addLog(text) {
         this.actionLog.push(text);
-        if (this.actionLog.length > 24) {
-            this.actionLog.splice(0, this.actionLog.length - 24);
-        }
     }
 
     findPlayerBySocket(ws) {
@@ -33,12 +30,59 @@ class PerudoGame {
         return this.players.find(player => player.id === playerId) || null;
     }
 
+    isActivePlayer(player) {
+        return Boolean(player) && Number(player.diceCount) > 0;
+    }
+
+    getActivePlayers() {
+        return this.players.filter(player => this.isActivePlayer(player));
+    }
+
+    getActivePlayerCount() {
+        return this.getActivePlayers().length;
+    }
+
+    findActiveIndexAtOrAfter(index) {
+        if (this.players.length === 0) {
+            return -1;
+        }
+
+        for (let offset = 0; offset < this.players.length; offset += 1) {
+            const nextIndex = ((index + offset) % this.players.length + this.players.length) % this.players.length;
+            if (this.isActivePlayer(this.players[nextIndex])) {
+                return nextIndex;
+            }
+        }
+
+        return -1;
+    }
+
+    nextActiveIndex(index) {
+        return this.findActiveIndexAtOrAfter(index + 1);
+    }
+
+    getLastActivePlayer() {
+        const activePlayers = this.getActivePlayers();
+        return activePlayers.length === 1 ? activePlayers[0] : null;
+    }
+
     getCurrentTurnPlayer() {
         if (this.players.length === 0 || this.round.phase !== 'bidding') {
             return null;
         }
 
-        return this.players[this.round.turnIndex] || null;
+        const currentPlayer = this.players[this.round.turnIndex] || null;
+        if (this.isActivePlayer(currentPlayer)) {
+            return currentPlayer;
+        }
+
+        const nextIndex = this.findActiveIndexAtOrAfter(this.round.turnIndex);
+        if (nextIndex === -1) {
+            return null;
+        }
+
+        this.round.turnIndex = nextIndex;
+        return this.players[nextIndex] || null;
     }
 
     nextIndex(index) {
@@ -54,22 +98,29 @@ class PerudoGame {
             return;
         }
 
-        if (this.players.length >= this.minPlayersToStart) {
+        if (this.getActivePlayerCount() >= this.minPlayersToStart) {
             this.startRound(this.round.turnIndex, false);
         }
     }
 
     startRound(starterIndex, palificoRound) {
-        if (this.players.length < this.minPlayersToStart) {
+        if (this.getActivePlayerCount() < this.minPlayersToStart) {
             this.round.setWaiting();
             this.addLog('Waiting for at least 2 players.');
             return;
         }
 
-        this.round.startNewRound(starterIndex, this.players.length, palificoRound);
+        const activeStarterIndex = this.findActiveIndexAtOrAfter(starterIndex);
+        if (activeStarterIndex === -1) {
+            this.round.setWaiting();
+            this.addLog('Waiting for at least 2 players.');
+            return;
+        }
+
+        this.round.startNewRound(activeStarterIndex, this.players.length, palificoRound);
 
         for (const player of this.players) {
-            player.currentDice = this.rollDice(player.diceCount);
+            player.currentDice = this.isActivePlayer(player) ? this.rollDice(player.diceCount) : [];
         }
 
         const starter = this.players[this.round.turnIndex];
@@ -82,17 +133,15 @@ class PerudoGame {
             return { ok: false, error: `Room is full (max ${this.maxPlayersPerRoom} players).` };
         }
 
-        if (this.round.phase === 'bidding') {
-            return { ok: false, error: 'Round in progress. Join after this game.' };
-        }
+        const joiningDuringRound = this.round.phase === 'bidding';
 
         this.players.push({
             ...player,
             diceCount: this.startingDicePerPlayer,
-            currentDice: []
+            currentDice: joiningDuringRound ? this.rollDice(this.startingDicePerPlayer) : []
         });
 
-        this.addLog(`${player.name} joined the room.`);
+        this.addLog(joiningDuringRound ? `${player.name} joined the room mid-round.` : `${player.name} joined the room.`);
         this.beginGameIfReady();
 
         return { ok: true };
@@ -104,11 +153,17 @@ class PerudoGame {
             return;
         }
 
+        const wasGameOver = this.round.phase === 'game_over';
+
         const leavingPlayer = this.players[leavingIndex];
         this.players.splice(leavingIndex, 1);
         this.addLog(`${leavingPlayer.name} left the room.`);
 
         if (this.players.length === 0) {
+            return;
+        }
+
+        if (wasGameOver) {
             return;
         }
 
@@ -118,16 +173,22 @@ class PerudoGame {
             } else if (leavingIndex === this.round.turnIndex && this.round.turnIndex >= this.players.length) {
                 this.round.turnIndex = 0;
             }
+
+            this.round.turnIndex = this.findActiveIndexAtOrAfter(this.round.turnIndex);
+            if (this.round.turnIndex === -1) {
+                this.round.setWaiting();
+            }
         }
 
-        if (this.players.length < this.minPlayersToStart) {
+        if (this.getActivePlayerCount() < this.minPlayersToStart) {
             this.round.setWaiting();
             this.addLog('Round paused: waiting for at least 2 players.');
         }
 
-        if (this.players.length === 1) {
-            this.round.setGameOver(this.players[0].id);
-            this.addLog(`${this.players[0].name} wins (last remaining player).`);
+        const winner = this.getLastActivePlayer();
+        if (winner) {
+            this.round.setGameOver(winner.id);
+            this.addLog(`${winner.name} wins (last remaining player).`);
         }
 
         this.beginGameIfReady();
@@ -147,7 +208,8 @@ class PerudoGame {
             players: this.players.map(item => ({
                 id: item.id,
                 name: item.name,
-                diceCount: item.diceCount
+                diceCount: item.diceCount,
+                isEliminated: item.diceCount <= 0
             })),
             currentTurnPlayerId: currentTurnPlayer ? currentTurnPlayer.id : null,
             lastBid: this.round.lastBid
@@ -159,7 +221,7 @@ class PerudoGame {
                   }
                 : null,
             yourDice: [...player.currentDice],
-            actionLog: this.actionLog.slice(-12),
+            actionLog: this.actionLog,
             lastResolution: this.round.lastResolution,
             winnerPlayerId: this.round.winnerPlayerId
         };
@@ -172,7 +234,11 @@ class PerudoGame {
             return { ok: false, error: 'Round is not in bidding phase.' };
         }
 
-        if (this.players.length < this.minPlayersToStart) {
+        if (!this.isActivePlayer(player)) {
+            return { ok: false, error: 'Eliminated players cannot bid.' };
+        }
+
+        if (this.getActivePlayerCount() < this.minPlayersToStart) {
             return { ok: false, error: 'At least 2 players are required.' };
         }
 
@@ -201,7 +267,7 @@ class PerudoGame {
         }
 
         this.addLog(`${player.name} bids ${bid.quantity} x ${bid.face}.`);
-        this.round.turnIndex = this.nextIndex(this.round.turnIndex);
+        this.round.turnIndex = this.nextActiveIndex(this.round.turnIndex);
 
         return { ok: true };
     }
@@ -248,25 +314,26 @@ class PerudoGame {
         this.addLog(`${doubter.name} calls Dudo on ${bidder.name}'s bid ${this.round.lastBid.quantity} x ${this.round.lastBid.face}.`);
 
         if (bidWasCorrect) {
-            this.addLog(`Bid stands (${actualCount} matching). ${doubter.name} loses a die.`);
+            this.addLog(`Dudo failed (${actualCount} matching). ${doubter.name} loses a die.`);
         } else {
-            this.addLog(`Bid fails (${actualCount} matching). ${bidder.name} loses a die.`);
+            this.addLog(`Dudo successful (${actualCount} matching). ${bidder.name} loses a die.`);
         }
 
         let nextStarterIndex;
         let palificoNextRound = false;
 
         if (loser.diceCount <= 0) {
-            this.players.splice(loserIndexBeforePenalty, 1);
+            loser.currentDice = [];
             this.addLog(`${loser.name} is eliminated.`);
 
-            if (this.players.length === 1) {
-                this.round.setGameOver(this.players[0].id);
-                this.addLog(`${this.players[0].name} wins the game.`);
+            const winner = this.getLastActivePlayer();
+            if (winner) {
+                this.round.setGameOver(winner.id);
+                this.addLog(`${winner.name} wins the game.`);
                 return;
             }
 
-            nextStarterIndex = loserIndexBeforePenalty % this.players.length;
+            nextStarterIndex = this.nextActiveIndex(loserIndexBeforePenalty);
         } else {
             nextStarterIndex = this.players.findIndex(player => player.id === loser.id);
             palificoNextRound = loser.diceCount === 1;
@@ -280,6 +347,10 @@ class PerudoGame {
 
         if (this.round.phase !== 'bidding') {
             return { ok: false, error: 'Dudo is only available during bidding.' };
+        }
+
+        if (!this.isActivePlayer(player)) {
+            return { ok: false, error: 'Eliminated players cannot call Dudo.' };
         }
 
         if (!this.round.lastBid) {
@@ -348,16 +419,17 @@ class PerudoGame {
 
         if (caller.diceCount <= 0) {
             const removalIndex = this.players.findIndex(player => player.id === caller.id);
-            this.players.splice(removalIndex, 1);
+            caller.currentDice = [];
             this.addLog(`${caller.name} is eliminated.`);
 
-            if (this.players.length === 1) {
-                this.round.setGameOver(this.players[0].id);
-                this.addLog(`${this.players[0].name} wins the game.`);
+            const winner = this.getLastActivePlayer();
+            if (winner) {
+                this.round.setGameOver(winner.id);
+                this.addLog(`${winner.name} wins the game.`);
                 return;
             }
 
-            nextStarterIndex = removalIndex % this.players.length;
+            nextStarterIndex = this.nextActiveIndex(removalIndex);
         } else {
             nextStarterIndex = this.players.findIndex(player => player.id === caller.id);
             palificoNextRound = !bidIsExact && callerDiceBefore === 2 && caller.diceCount === 1;
@@ -377,15 +449,23 @@ class PerudoGame {
             return { ok: false, error: 'Cannot call Calza before any bid.' };
         }
 
-        if (this.round.turnIndex !== playerIndex) {
-            return { ok: false, error: 'Not your turn.' };
+        if (playerIndex < 0) {
+            return { ok: false, error: 'Player not found in room.' };
+        }
+
+        if (!this.isActivePlayer(player)) {
+            return { ok: false, error: 'Eliminated players cannot call Calza.' };
+        }
+
+        if (this.round.lastBid.playerId === player.id) {
+            return { ok: false, error: 'You cannot call Calza on your own bid.' };
         }
 
         if (this.round.palificoRound) {
             return { ok: false, error: 'Calza is not allowed in Palifico round.' };
         }
 
-        if (this.players.length <= 2) {
+        if (this.getActivePlayerCount() <= 2) {
             return { ok: false, error: 'Calza is not allowed with only two players left.' };
         }
 

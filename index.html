@@ -8,15 +8,27 @@
 </head>
 <body>
     <main>
+        <section id="app-loading" class="loading-screen" aria-live="polite">
+            <div class="loader-card">
+                <h2>Preparing table...</h2>
+                <p>Loading Perudo interface.</p>
+                <div class="loader-skeletons" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </section>
+
         <section id="join-screen" class="screen" aria-label="Join screen">
-            <h1>Perudo</h1>
+            <h1 class="title-display">Perudo</h1>
             <p class="join-subtitle">Enter a name and room to start playing.</p>
             <section class="join-panel" aria-label="Join match">
                 <label for="player-name">Name</label>
                 <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
                 <label for="room-id">Match</label>
                 <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
-                <button id="join-button" type="button">Join</button>
+                <button id="join-button" type="button">Join Table</button>
             </section>
             <p id="status" aria-live="polite">Not connected.</p>
         </section>
@@ -25,44 +37,69 @@
             <aside class="players-sidebar" aria-label="Players in match">
                 <h2>👥 Players</h2>
                 <ul id="players-list"></ul>
+                <button id="sidebar-rematch-button" type="button" class="sidebar-rematch hidden">Rematch</button>
                 <button id="leave-button" type="button">Leave</button>
             </aside>
 
             <section class="game-panel" aria-label="Dice game area">
-                <h1>🎲 Perudo</h1>
-                <p id="status-game" aria-live="polite">Waiting for players...</p>
+                <header class="game-header">
+                    <div>
+                        <h1 class="title-display">🎲 Perudo</h1>
+                        <p class="lobby-chip">Lobby: <span id="lobby-code">-</span></p>
+                    </div>
+                    <button id="settings-toggle" type="button" class="icon-button" aria-expanded="false" aria-controls="settings-modal">⚙️</button>
+                </header>
 
-                <div class="game-meta">
-                    <p><strong>Round:</strong> <span id="round-number">-</span></p>
-                    <p><strong>Last bid:</strong> <span id="last-bid">None</span></p>
-                    <p><strong>Palifico:</strong> <span id="palifico-indicator">No</span></p>
+                <p id="status-game" class="turn-banner" aria-live="polite">Waiting for players...</p>
+
+                <div class="priority-grid">
+                    <article class="priority-card current-bid-card">
+                        <p class="card-kicker">Active Bid</p>
+                        <p id="last-bid" class="card-value">None</p>
+                    </article>
+                    <article class="priority-card round-card">
+                        <p class="card-kicker">Round</p>
+                        <p class="card-value"><span id="round-number">-</span></p>
+                        <p class="card-meta">Palifico: <span id="palifico-indicator">No</span></p>
+                    </article>
                 </div>
 
-                <h2>Your Dice</h2>
-                <div id="dice-container" class="dice-container" aria-label="Your dice"></div>
+                <section class="dice-stage" aria-label="Your dice section">
+                    <div class="section-heading-row">
+                        <h2>Your Dice</h2>
+                    </div>
+                    <div id="dice-container" class="dice-container" aria-label="Your dice"></div>
+                </section>
 
                 <section class="actions-panel" aria-label="Bid controls">
-                    <div class="bid-group" aria-label="Quantity options">
-                        <p class="group-label">🔢 Quantity</p>
-                        <div id="quantity-buttons" class="option-buttons"></div>
+                    <div class="section-heading-row">
+                        <h2>Action Console</h2>
                     </div>
+                    <div class="bid-controls">
+                        <div class="bid-group" aria-label="Quantity options">
+                            <p class="group-label">🔢 Quantity</p>
+                            <div id="quantity-buttons" class="option-buttons"></div>
+                        </div>
 
-                    <div class="bid-group" aria-label="Face options">
-                        <p class="group-label">🎯 Face</p>
-                        <div id="face-buttons" class="option-buttons face-buttons"></div>
+                        <div class="bid-group" aria-label="Value options">
+                            <p class="group-label">🎯 Value</p>
+                            <div id="face-buttons" class="option-buttons face-buttons"></div>
+                        </div>
                     </div>
 
                     <div class="action-buttons">
-                        <button id="bid-button" type="button" disabled>Place Bid</button>
+                        <button id="bid-button" type="button" class="hot-action" disabled>Bid</button>
                         <button id="calza-button" type="button" disabled>Calza</button>
-                        <button id="dudo-button" type="button" disabled>Dudo</button>
+                        <button id="dudo-button" type="button" class="critical-action" disabled>Dudo</button>
                     </div>
+                    <p id="action-helper" class="action-helper">Select a legal quantity and value to place a bid.</p>
                 </section>
 
                 <section class="resolution-panel" aria-label="Round resolution">
                     <h2>📣 Last Round</h2>
                     <p id="resolution-text">No Dudo resolution yet.</p>
                 </section>
+
             </section>
 
             <aside class="log-sidebar" aria-label="Action log">
@@ -73,6 +110,82 @@
             </aside>
         </section>
 
+        <section id="confirm-modal" class="modal hidden" aria-label="Confirm action">
+            <div class="modal-overlay" id="confirm-modal-overlay"></div>
+            <div class="modal-card confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+                <div class="modal-header">
+                    <h2 id="confirm-title">Confirm Action</h2>
+                </div>
+                <p id="confirm-message" class="modal-summary"></p>
+                <div class="confirm-actions">
+                    <button id="confirm-cancel-button" type="button" class="modal-close">Cancel</button>
+                    <button id="confirm-accept-button" type="button" class="critical-action">Confirm</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="quantity-overflow-modal" class="modal hidden" aria-label="High quantity picker">
+            <div class="modal-overlay" id="quantity-overflow-overlay"></div>
+            <div class="modal-card quantity-overflow-card" role="dialog" aria-modal="true" aria-labelledby="quantity-overflow-title">
+                <div class="modal-header">
+                    <h2 id="quantity-overflow-title">Choose Quantity 10+</h2>
+                    <button id="quantity-overflow-close" type="button" class="modal-close">Close</button>
+                </div>
+                <div id="quantity-overflow-buttons" class="option-buttons quantity-overflow-buttons"></div>
+            </div>
+        </section>
+
+        <section id="settings-modal" class="modal hidden" aria-label="Settings">
+            <div class="modal-overlay" id="settings-modal-overlay"></div>
+            <section id="settings-panel" class="modal-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                <div class="modal-header">
+                    <h2 id="settings-title">Settings</h2>
+                    <button id="settings-close-button" type="button" class="modal-close">Close</button>
+                </div>
+
+                <div class="settings-grid">
+                    <label class="setting-item" for="sound-toggle">
+                        <span>Sound Effects</span>
+                        <input id="sound-toggle" type="checkbox" checked>
+                    </label>
+
+                    <label class="setting-item" for="font-scale">
+                        <span>Text Size</span>
+                        <select id="font-scale">
+                            <option value="0.85">Small</option>
+                            <option value="1" selected>Normal</option>
+                            <option value="1.2">Large</option>
+                            <option value="1.4">XL</option>
+                        </select>
+                    </label>
+
+                    <label class="setting-item" for="advanced-toggle">
+                        <span>Show Last Round</span>
+                        <input id="advanced-toggle" type="checkbox">
+                    </label>
+
+                    <label class="setting-item" for="dark-mode-toggle">
+                        <span>Dark Mode</span>
+                        <input id="dark-mode-toggle" type="checkbox">
+                    </label>
+                </div>
+
+                <details id="rules-panel" class="rules-panel">
+                    <summary>Rule Cheatsheet</summary>
+                    <ul>
+                        <li>Goal: be the last player with dice remaining.</li>
+                        <li>On your turn, you either Bid, call Dudo, or call Calza.</li>
+                        <li>Bids must legally increase from the previous bid.</li>
+                        <li>Normal rounds: Pacos (1s) are wild for non-1 bids.</li>
+                        <li>Palifico (when someone has 1 die): opening bid sets a locked value and Pacos are not wild.</li>
+                        <li>Dudo: challenge the previous bid; loser of the challenge loses a die.</li>
+                        <li>Calza: only with 3+ players and not in Palifico; exact count gains a die, otherwise lose one.</li>
+                        <li>When a player reaches 0 dice, they are eliminated.</li>
+                    </ul>
+                </details>
+            </section>
+        </section>
+
         <section id="resolution-modal" class="modal hidden" aria-label="Dudo result">
             <div class="modal-overlay" id="resolution-modal-overlay"></div>
             <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -80,8 +193,29 @@
                     <h2 id="modal-title">Dudo Reveal</h2>
                     <button id="modal-close-button" type="button" class="modal-close">Close</button>
                 </div>
+                <p id="modal-caller" class="modal-caller"></p>
+                <p id="modal-verdict" class="modal-verdict"></p>
                 <p id="modal-summary" class="modal-summary"></p>
+                <p id="modal-match-count" class="modal-match-count"></p>
                 <div id="modal-reveal-list" class="modal-reveal-list"></div>
+                <p id="modal-loser" class="modal-loser"></p>
+            </div>
+        </section>
+
+        <section id="victory-modal" class="modal hidden" aria-label="Game winner">
+            <div class="modal-overlay" id="victory-modal-overlay"></div>
+            <div class="modal-card victory-card" role="dialog" aria-modal="true" aria-labelledby="victory-title">
+                <div class="modal-header">
+                    <h2 id="victory-title">🏆 Victory!</h2>
+                    <button id="victory-close-button" type="button" class="modal-close">Close</button>
+                </div>
+                <p id="victory-message" class="modal-summary victory-message"></p>
+                <p class="victory-subtitle">That was a great round!</p>
+                <div id="victory-burst" class="victory-burst" aria-hidden="true"></div>
+                <div class="victory-actions">
+                    <button id="rematch-button" type="button" class="hot-action">Rematch</button>
+                    <p id="rematch-status" class="rematch-status"></p>
+                </div>
             </div>
         </section>
     </main>

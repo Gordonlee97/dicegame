@@ -103,6 +103,11 @@ webSocketServer.on('connection', ws => {
                 return;
             }
 
+            if (data.type === 'rematch') {
+                gameManager.handleRematch(ws);
+                return;
+            }
+
             send(ws, { type: 'error', message: 'Unsupported message type.' });
         } catch {
             send(ws, { type: 'error', message: 'Invalid message payload.' });

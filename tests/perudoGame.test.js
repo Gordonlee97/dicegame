@@ -204,3 +204,63 @@ test('calza exact gains die and caller starts next round', () => {
     assert.equal(game.round.lastResolution.type, 'calza');
     assert.equal(game.round.lastResolution.bidIsExact, true);
 });
+
+test('calza can be called by non-bidder and is blocked for bidder', () => {
+    const game = createGame(
+        [
+            [2, 2, 3, 4, 5],
+            [1, 6, 6, 6, 6],
+            [2, 3, 4, 5, 6],
+            [1, 1, 1, 1, 1],
+            [2, 2, 2, 2, 2],
+            [3, 3, 3, 3, 3]
+        ],
+        { minPlayersToStart: 3 }
+    );
+
+    addPlayers(game, ['Alice', 'Bob', 'Cara']);
+
+    const alice = player(game, 'Alice');
+    const bob = player(game, 'Bob');
+
+    let result = game.handleBid(alice, new Bid(4, 2, alice.id));
+    assert.equal(result.ok, true);
+
+    result = game.handleCalza(alice);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /cannot call Calza on your own bid/i);
+
+    result = game.handleCalza(bob);
+    assert.equal(result.ok, true);
+    assert.equal(game.round.lastResolution.type, 'calza');
+});
+
+test('eliminated players stay in room as spectators and still appear in reveal', () => {
+    const game = createGame([
+        [2, 2, 2, 2, 2],
+        [3, 3, 3, 3, 3],
+        [2],
+        [3, 3]
+    ]);
+
+    addPlayers(game, ['Alice', 'Bob']);
+
+    const alice = player(game, 'Alice');
+    const bob = player(game, 'Bob');
+
+    alice.diceCount = 1;
+    bob.diceCount = 2;
+    game.startRound(0, false);
+
+    let result = game.handleBid(alice, new Bid(2, 6, alice.id));
+    assert.equal(result.ok, true);
+
+    result = game.handleDudo(bob);
+    assert.equal(result.ok, true);
+
+    assert.equal(player(game, 'Alice').diceCount, 0);
+    assert.ok(player(game, 'Alice'));
+    assert.equal(game.round.phase, 'game_over');
+    assert.equal(game.round.winnerPlayerId, bob.id);
+    assert.ok(game.round.lastResolution.revealedDice.some(item => item.playerId === alice.id));
+});
