@@ -1,7 +1,7 @@
 name: Deploy Backend to Azure Web App
 
 env:
-  AZURE_WEBAPP_NAME: dicegame-backend-brgpdrdyh8b9fka2
+  AZURE_WEBAPP_NAME: dicegame-backend
 
 on:
   workflow_run:
