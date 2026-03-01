@@ -26,7 +26,7 @@
             <section class="join-panel" aria-label="Join match">
                 <label for="player-name">Name</label>
                 <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
-                <label for="room-id">Match</label>
+                <label for="room-id">Room Code</label>
                 <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
                 <button id="join-button" type="button">Join Table</button>
             </section>
@@ -37,6 +37,7 @@
             <aside class="players-sidebar" aria-label="Players in match">
                 <h2>👥 Players</h2>
                 <ul id="players-list"></ul>
+                <button id="start-game-button" type="button" class="sidebar-rematch hidden">Start Game</button>
                 <button id="sidebar-rematch-button" type="button" class="sidebar-rematch hidden">Rematch</button>
                 <button id="leave-button" type="button">Leave</button>
             </aside>
@@ -45,12 +46,13 @@
                 <header class="game-header">
                     <div>
                         <h1 class="title-display">🎲 Perudo</h1>
-                        <p class="lobby-chip">Lobby: <span id="lobby-code">-</span></p>
+                        <p class="lobby-chip">Room Code: <span id="lobby-code">-</span></p>
                     </div>
                     <button id="settings-toggle" type="button" class="icon-button" aria-expanded="false" aria-controls="settings-modal">⚙️</button>
                 </header>
 
                 <p id="status-game" class="turn-banner" aria-live="polite">Waiting for players...</p>
+                <p id="waiting-start-notice" class="waiting-start-notice">Waiting for players... the game starts only after someone clicks Start Game.</p>
 
                 <div class="priority-grid">
                     <article class="priority-card current-bid-card">
@@ -109,6 +111,8 @@
                 </section>
             </aside>
         </section>
+
+        <section id="event-toast-layer" class="event-toast-layer" aria-live="polite" aria-atomic="true"></section>
 
         <section id="confirm-modal" class="modal hidden" aria-label="Confirm action">
             <div class="modal-overlay" id="confirm-modal-overlay"></div>

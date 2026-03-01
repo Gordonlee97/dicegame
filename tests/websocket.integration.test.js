@@ -207,12 +207,18 @@ test.after(async () => {
     await stopServer(server);
 });
 
-test('websocket join starts bidding and syncs state', async () => {
+test('websocket join waits until start_game then enters bidding', async () => {
     const roomId = `ws-join-${Date.now()}`;
     const alice = await connectAndJoin(server.wsUrl, 'Alice', roomId);
     const bob = await connectAndJoin(server.wsUrl, 'Bob', roomId);
 
     try {
+        await alice.client.waitFor(
+            message => message.type === 'state' && message.phase === 'waiting' && Array.isArray(message.players) && message.players.length === 2
+        );
+
+        alice.client.send({ type: 'start_game' });
+
         const state = await alice.client.waitFor(
             message => message.type === 'state' && message.phase === 'bidding' && Array.isArray(message.players) && message.players.length === 2
         );
@@ -231,6 +237,12 @@ test('websocket enforces turn and emits error for invalid bidder', async () => {
     const bob = await connectAndJoin(server.wsUrl, 'Bob', roomId);
 
     try {
+        await alice.client.waitFor(
+            message => message.type === 'state' && message.phase === 'waiting' && message.players.length === 2
+        );
+
+        alice.client.send({ type: 'start_game' });
+
         const state = await alice.client.waitFor(
             message => message.type === 'state' && message.phase === 'bidding' && message.players.length === 2
         );
@@ -253,6 +265,12 @@ test('websocket bid then dudo resolves and advances round', async () => {
     const bob = await connectAndJoin(server.wsUrl, 'Bob', roomId);
 
     try {
+        await alice.client.waitFor(
+            message => message.type === 'state' && message.phase === 'waiting' && message.players.length === 2
+        );
+
+        alice.client.send({ type: 'start_game' });
+
         const state = await alice.client.waitFor(
             message => message.type === 'state' && message.phase === 'bidding' && message.players.length === 2
         );

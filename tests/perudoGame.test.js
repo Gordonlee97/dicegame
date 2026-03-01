@@ -47,6 +47,13 @@ function player(game, name) {
     return game.players.find(item => item.name === name);
 }
 
+function startGame(game, starterName = null) {
+    const starter = starterName ? player(game, starterName) : game.players[0];
+    assert.ok(starter);
+    const result = game.handleStartGame(starter);
+    assert.equal(result.ok, true);
+}
+
 test('opening bid cannot be pacos outside palifico', () => {
     const game = createGame([
         [2, 2, 3, 4, 5],
@@ -54,6 +61,7 @@ test('opening bid cannot be pacos outside palifico', () => {
     ]);
 
     addPlayers(game, ['Alice', 'Bob']);
+    startGame(game, 'Alice');
 
     const alice = player(game, 'Alice');
     const result = game.handleBid(alice, new Bid(2, 1, alice.id));
@@ -73,6 +81,7 @@ test('bid raising rules enforce normal/paco transitions', () => {
     );
 
     addPlayers(game, ['Alice', 'Bob', 'Cara']);
+    startGame(game, 'Alice');
 
     const alice = player(game, 'Alice');
     const bob = player(game, 'Bob');
@@ -103,6 +112,7 @@ test('dudo resolves correctly and starts next round from loser', () => {
     ]);
 
     addPlayers(game, ['Alice', 'Bob']);
+    startGame(game, 'Alice');
 
     const alice = player(game, 'Alice');
     const bob = player(game, 'Bob');
@@ -122,8 +132,6 @@ test('dudo resolves correctly and starts next round from loser', () => {
 test('palifico round enforces locked face and allows paco opening bid', () => {
     const game = createGame(
         [
-            [2, 2, 2, 2, 2],
-            [3, 3, 3, 3, 3],
             [6, 6],
             [2, 3],
             [1],
@@ -192,6 +200,8 @@ test('calza exact gains die and caller starts next round', () => {
     result = game.addPlayer({ id: 'id-Cara', name: 'Cara', ws: { id: 'ws-Cara' } });
     assert.equal(result.ok, true);
 
+    startGame(game, 'Alice');
+
     result = game.handleBid(alice, new Bid(4, 2, alice.id));
     assert.equal(result.ok, true);
 
@@ -219,6 +229,7 @@ test('calza can be called by non-bidder and is blocked for bidder', () => {
     );
 
     addPlayers(game, ['Alice', 'Bob', 'Cara']);
+    startGame(game, 'Alice');
 
     const alice = player(game, 'Alice');
     const bob = player(game, 'Bob');
@@ -237,8 +248,6 @@ test('calza can be called by non-bidder and is blocked for bidder', () => {
 
 test('eliminated players stay in room as spectators and still appear in reveal', () => {
     const game = createGame([
-        [2, 2, 2, 2, 2],
-        [3, 3, 3, 3, 3],
         [2],
         [3, 3]
     ]);

@@ -63,6 +63,20 @@ class GameManager {
         return candidate;
     }
 
+    shufflePlayerOrder(game) {
+        const players = game.players;
+        for (let index = players.length - 1; index > 0; index -= 1) {
+            const swapIndex = crypto.randomInt(index + 1);
+            if (swapIndex === index) {
+                continue;
+            }
+
+            const temp = players[index];
+            players[index] = players[swapIndex];
+            players[swapIndex] = temp;
+        }
+    }
+
     transferPlayerToRoom(ws, playerName, targetRoomId) {
         const game = this.getOrCreateGame(targetRoomId);
         const player = {
@@ -225,6 +239,25 @@ class GameManager {
         }
 
         const result = context.game.handleCalza(context.player);
+        if (!result.ok) {
+            this.send(ws, { type: 'error', message: result.error });
+            return;
+        }
+
+        this.broadcastState(context.game);
+    }
+
+    handleStartGame(ws) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        if (context.game.round.phase === 'waiting' && context.game.round.roundNumber === 0) {
+            this.shufflePlayerOrder(context.game);
+        }
+
+        const result = context.game.handleStartGame(context.player);
         if (!result.ok) {
             this.send(ws, { type: 'error', message: result.error });
             return;

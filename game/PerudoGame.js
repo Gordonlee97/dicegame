@@ -7,6 +7,7 @@ class PerudoGame {
         this.players = [];
         this.round = new RoundState();
         this.actionLog = ['Room created. Waiting for players.'];
+        this.resolutionEventId = 0;
 
         this.minPlayersToStart = options.minPlayersToStart ?? 2;
         this.maxPlayersPerRoom = options.maxPlayersPerRoom ?? 6;
@@ -16,6 +17,9 @@ class PerudoGame {
 
     addLog(text) {
         this.actionLog.push(text);
+        if (this.actionLog.length > 120) {
+            this.actionLog.splice(0, this.actionLog.length - 120);
+        }
     }
 
     findPlayerBySocket(ws) {
@@ -98,9 +102,31 @@ class PerudoGame {
             return;
         }
 
+        if (this.round.roundNumber === 0) {
+            return;
+        }
+
         if (this.getActivePlayerCount() >= this.minPlayersToStart) {
             this.startRound(this.round.turnIndex, false);
         }
+    }
+
+    handleStartGame(player) {
+        if (this.round.phase !== 'waiting') {
+            return { ok: false, error: 'Game is already in progress.' };
+        }
+
+        if (this.round.roundNumber > 0) {
+            return { ok: false, error: 'Cannot manually start after the game has begun.' };
+        }
+
+        if (this.getActivePlayerCount() < this.minPlayersToStart) {
+            return { ok: false, error: 'At least 2 players are required to start.' };
+        }
+
+        this.addLog(`${player.name} started the game.`);
+        this.startRound(this.round.turnIndex, false);
+        return { ok: true };
     }
 
     startRound(starterIndex, palificoRound) {
@@ -291,6 +317,8 @@ class PerudoGame {
         loser.diceCount -= 1;
 
         this.round.lastResolution = {
+            type: 'dudo',
+            eventId: ++this.resolutionEventId,
             doubterPlayerId: doubter.id,
             doubterName: doubter.name,
             bidderPlayerId: bidder.id,
@@ -387,6 +415,7 @@ class PerudoGame {
 
         this.round.lastResolution = {
             type: 'calza',
+            eventId: ++this.resolutionEventId,
             callerPlayerId: caller.id,
             callerName: caller.name,
             bidderPlayerId: bidder.id,

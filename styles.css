@@ -273,6 +273,24 @@ button:focus-visible,
     font-weight: 700;
 }
 
+.waiting-start-notice {
+    margin: -4px 0 2px;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    border-radius: 11px;
+    border: 1px dashed #d4dfef;
+    background: #f6f9ff;
+    color: #2f4d76;
+    padding: 8px 10px;
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.waiting-start-notice.hidden {
+    display: none;
+}
+
 .turn-banner.my-turn::before {
     content: '';
     width: 10px;
@@ -398,6 +416,8 @@ button:focus-visible,
     justify-content: center;
     gap: 14px;
     padding: 6px 2px;
+    position: relative;
+    overflow: visible;
 }
 
 .die {
@@ -416,6 +436,8 @@ button:focus-visible,
         "p7 p8 p9";
     place-items: center;
     padding: 7px;
+    position: relative;
+    transition: border-color 1.6s ease-out, box-shadow 1.6s ease-out;
     animation: dieEnter 240ms ease;
 }
 
@@ -433,6 +455,40 @@ button:focus-visible,
 
 .die.flash {
     animation: dieBounce 280ms ease;
+}
+
+.die.rolling {
+    animation: dieRollThrow 960ms cubic-bezier(0.16, 0.62, 0.24, 1) both;
+    animation-delay: var(--throw-delay, 0ms);
+    z-index: 3;
+    will-change: transform, opacity;
+}
+
+.die.paco-glow {
+    border-color: #f5de94;
+    box-shadow: 0 0 0 2px rgba(245, 222, 148, 0.2), 0 7px 16px rgba(245, 222, 148, 0.26);
+}
+
+@keyframes dieRollThrow {
+    0% {
+        transform: translateX(calc(-170px + var(--throw-cluster-x, 0px))) translateY(calc(-8px + var(--throw-cluster-y, 0px))) rotate(var(--throw-spin-start, -220deg)) scale(0.9);
+        opacity: 1;
+    }
+
+    70% {
+        transform: translateX(calc(-20px + var(--throw-cluster-x, 0px) * 0.1)) translateY(calc(-24px - var(--throw-lift, 0px) * 0.45)) rotate(calc(var(--throw-spin-start, -220deg) * 0.2)) scale(0.985);
+        opacity: 1;
+    }
+
+    92% {
+        transform: translateX(calc(-5px + var(--throw-cluster-x, 0px) * 0.02)) translateY(3px) rotate(calc(var(--throw-spin-start, -220deg) * 0.06)) scale(1.004);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
 }
 
 @keyframes dieBounce {
@@ -502,6 +558,7 @@ button:focus-visible,
 #calza-button,
 #dudo-button,
 #rematch-button,
+#start-game-button,
 #sidebar-rematch-button,
 .modal-close,
 #confirm-accept-button {
@@ -696,6 +753,10 @@ button:disabled {
     font-weight: 600;
 }
 
+#start-game-button {
+    border-color: #a6c6b2;
+}
+
 #sidebar-rematch-button {
     border-color: #a6c6b2;
 }
@@ -710,6 +771,10 @@ button:disabled {
 }
 
 #sidebar-rematch-button.hidden {
+    display: none;
+}
+
+#start-game-button.hidden {
     display: none;
 }
 
@@ -957,10 +1022,142 @@ button:disabled {
     font-size: 0.86rem;
 }
 
+.event-toast-layer {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    pointer-events: none;
+    display: grid;
+    gap: 8px;
+    width: min(92vw, 560px);
+}
+
+.event-toast {
+    border-radius: 12px;
+    border: 1px solid #c6d7f1;
+    background: rgba(18, 37, 64, 0.94);
+    color: #fff;
+    box-shadow: 0 12px 26px rgba(10, 20, 38, 0.26);
+    padding: 10px 14px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    transform-origin: top center;
+    animation: toastIn 180ms ease-out;
+}
+
+.event-toast.dudo {
+    border-color: #f0b7be;
+    background: rgba(130, 32, 46, 0.95);
+}
+
+.event-toast.turn {
+    border-color: #b7f0cc;
+    background: rgba(12, 115, 66, 0.95);
+}
+
+.event-toast.round {
+    border-color: #b9cdf2;
+    background: rgba(26, 64, 120, 0.95);
+}
+
+.event-toast.fade-out {
+    animation: toastOut 620ms ease-out forwards;
+}
+
+.event-toast.slide-aside {
+    animation: toastAside 700ms ease-out forwards;
+}
+
+@keyframes toastIn {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.96);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes toastOut {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.96);
+    }
+}
+
+@keyframes toastAside {
+    0% {
+        opacity: 1;
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(0) translateX(42px) scale(0.96);
+    }
+}
+
 .modal-summary {
     color: #324865;
     font-weight: 600;
     margin-bottom: 6px;
+}
+
+#resolution-modal .modal-card {
+    width: min(840px, calc(100% - 26px));
+    padding: 16px;
+}
+
+#resolution-modal .modal-header {
+    margin-bottom: 10px;
+}
+
+#resolution-modal .modal-header h2 {
+    font-size: 1.18rem;
+    color: #203758;
+}
+
+#resolution-modal .modal-caller {
+    margin: 2px 0 10px;
+    font-weight: 700;
+    color: #2f4465;
+    background: #f3f8ff;
+    border: 1px solid #d8e5f6;
+    border-radius: 10px;
+    padding: 8px 10px;
+}
+
+#resolution-modal .modal-verdict {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    font-weight: 800;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #f7fbff;
+    border: 1px solid #dbe7f6;
+}
+
+#resolution-modal .modal-summary,
+#resolution-modal .modal-match-count {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #f9fbff;
+    border: 1px solid #e1e9f6;
+}
+
+#resolution-modal .modal-match-count {
+    margin-bottom: 12px;
+    font-size: 0.94rem;
 }
 
 .modal-verdict {
@@ -982,7 +1179,7 @@ button:disabled {
 
 .modal-verdict.fail,
 .modal-match-count.fail {
-    color: #b42333;
+    color: #9b6700;
 }
 
 .modal-match-count {
@@ -1001,10 +1198,21 @@ button:disabled {
     gap: 8px;
 }
 
+#resolution-modal .modal-reveal-list {
+    gap: 10px;
+}
+
 .modal-loser {
     margin-top: 10px;
     font-weight: 700;
-    color: #b42333;
+    color: #324865;
+}
+
+#resolution-modal .modal-loser {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #e3ebf7;
+    font-size: 0.97rem;
 }
 
 .victory-card {
@@ -1163,6 +1371,26 @@ body.dark-mode .pip {
     background: #e7eef8;
 }
 
+body.dark-mode .event-toast {
+    border-color: #44618f;
+    background: rgba(13, 29, 52, 0.96);
+}
+
+body.dark-mode .event-toast.dudo {
+    border-color: #8d4b52;
+    background: rgba(88, 28, 37, 0.96);
+}
+
+body.dark-mode .event-toast.turn {
+    border-color: #418762;
+    background: rgba(14, 73, 47, 0.96);
+}
+
+body.dark-mode .event-toast.round {
+    border-color: #4a6fa8;
+    background: rgba(20, 46, 84, 0.96);
+}
+
 body.dark-mode .option-btn:disabled,
 body.dark-mode .face-option:disabled .face-option-die {
     background: #202a3a;
@@ -1174,19 +1402,19 @@ body.dark-mode .face-option:disabled .face-option-die {
     border: 1px solid #deE6f4;
     border-radius: 12px;
     background: #f8fbff;
-    padding: 8px;
+    padding: 10px;
 }
 
 .reveal-player-name {
-    margin: 0 0 6px;
-    font-size: 0.84rem;
+    margin: 0 0 7px;
+    font-size: 0.9rem;
     font-weight: 700;
     color: #2f4465;
 }
 
 .reveal-dice {
     display: flex;
-    gap: 6px;
+    gap: 7px;
     flex-wrap: wrap;
 }
 
@@ -1211,10 +1439,15 @@ body.dark-mode .face-option:disabled .face-option-die {
 @media (max-width: 1160px) {
     #game-screen {
         grid-template-columns: 240px minmax(0, 1fr);
+        gap: 14px;
     }
 
     .log-sidebar {
         grid-column: 1 / -1;
+    }
+
+    .log-panel {
+        max-height: 280px;
     }
 
 }
@@ -1227,6 +1460,25 @@ body.dark-mode .face-option:disabled .face-option-die {
     main {
         padding: 14px;
         border-radius: 14px;
+    }
+
+    #game-screen {
+        gap: 12px;
+    }
+
+    .players-sidebar,
+    .game-panel,
+    .log-panel {
+        border-radius: 12px;
+    }
+
+    .players-sidebar,
+    .game-panel,
+    .dice-stage,
+    .actions-panel,
+    .resolution-panel,
+    .log-panel {
+        padding: 10px;
     }
 
     .join-panel {
@@ -1259,11 +1511,51 @@ body.dark-mode .face-option:disabled .face-option-die {
 
     .action-buttons {
         grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .bid-group {
+        padding: 8px;
+    }
+
+    .turn-banner {
+        min-height: 40px;
+        padding: 8px 10px;
+        font-size: 0.92rem;
+    }
+
+    #players-list li {
+        min-height: 56px;
+        padding: 7px 9px;
+    }
+
+    .dice-container {
+        gap: 10px;
+        min-height: 74px;
+    }
+
+    #action-log {
+        max-height: 240px;
+        font-size: 0.8rem;
+    }
+
+    #action-log li {
+        padding: 7px;
     }
 
     .die {
         width: 66px;
         height: 66px;
+    }
+
+    .event-toast-layer {
+        top: 8px;
+        width: calc(100vw - 20px);
+    }
+
+    .event-toast {
+        font-size: 0.92rem;
+        padding: 9px 11px;
     }
 }
 

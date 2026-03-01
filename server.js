@@ -16,7 +16,8 @@ const mimeTypes = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
     '.js': 'application/javascript; charset=utf-8',
-    '.json': 'application/json; charset=utf-8'
+    '.json': 'application/json; charset=utf-8',
+    '.wav': 'audio/wav'
 };
 
 function randomDieValue() {
@@ -43,7 +44,17 @@ const gameManager = new GameManager({
 
 function serveFile(req, res) {
     const requestPath = req.url === '/' ? '/index.html' : req.url;
-    const safePath = path.normalize(requestPath).replace(/^([.][.][/\\])+/, '');
+    let decodedPath;
+
+    try {
+        decodedPath = decodeURIComponent(requestPath);
+    } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Bad request');
+        return;
+    }
+
+    const safePath = path.normalize(decodedPath).replace(/^([.][.][/\\])+/, '');
     const filePath = path.join(rootDir, safePath);
 
     if (!filePath.startsWith(rootDir)) {
@@ -100,6 +111,11 @@ webSocketServer.on('connection', ws => {
 
             if (data.type === 'calza') {
                 gameManager.handleCalza(ws);
+                return;
+            }
+
+            if (data.type === 'start_game') {
+                gameManager.handleStartGame(ws);
                 return;
             }
 

@@ -4,6 +4,7 @@ const calzaButton = document.getElementById('calza-button');
 const dudoButton = document.getElementById('dudo-button');
 const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
+const startGameButton = document.getElementById('start-game-button');
 const sidebarRematchButton = document.getElementById('sidebar-rematch-button');
 const quantityButtons = document.getElementById('quantity-buttons');
 const faceButtons = document.getElementById('face-buttons');
@@ -12,6 +13,7 @@ const roomIdInput = document.getElementById('room-id');
 const playersList = document.getElementById('players-list');
 const joinStatusText = document.getElementById('status');
 const gameStatusText = document.getElementById('status-game');
+const waitingStartNotice = document.getElementById('waiting-start-notice');
 const joinScreen = document.getElementById('join-screen');
 const gameScreen = document.getElementById('game-screen');
 const lastBidText = document.getElementById('last-bid');
@@ -60,6 +62,7 @@ const quantityOverflowCloseButton = document.getElementById('quantity-overflow-c
 const quantityOverflowButtons = document.getElementById('quantity-overflow-buttons');
 const resolutionPanel = document.querySelector('.resolution-panel');
 const logSidebar = document.querySelector('.log-sidebar');
+const eventToastLayer = document.getElementById('event-toast-layer');
 
 const state = {
     socket: null,
@@ -82,9 +85,14 @@ const state = {
     lastSeenResolutionKey: null,
     previousDiceKey: '',
     previousBidKey: '',
+    previousTurnPlayerId: null,
     pendingConfirmAction: null,
     lastSeenWinnerPlayerId: null,
     pendingVictoryWinnerName: null,
+    pendingRoundToastMessage: null,
+    pendingYourTurnToast: false,
+    deferDiceRollUntilResolutionClose: false,
+    pendingYourDice: null,
     rematchRequested: false,
     playerColorByName: {},
     nextPlayerColorIndex: 0,
@@ -97,6 +105,7 @@ const state = {
 };
 
 const playerNameColorPalette = ['#2563eb', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#0f766e'];
+const maxActionLogEntries = 120;
 
 const pipPositionsByValue = {
     1: [5],
@@ -108,6 +117,7 @@ const pipPositionsByValue = {
 };
 
 let audioContext;
+let diceRollAudio;
 
 function maybeHideLoadingScreen() {
     setTimeout(() => {
@@ -195,9 +205,182 @@ function playTone(frequency, durationMs, volume = 0.018, type = 'triangle') {
 }
 
 function playRattleCue() {
-    playTone(240, 90, 0.018, 'square');
-    setTimeout(() => playTone(290, 80, 0.016, 'square'), 48);
-    setTimeout(() => playTone(350, 95, 0.015, 'triangle'), 92);
+    playTone(180, 90, 0.022, 'square');
+    setTimeout(() => playTone(235, 70, 0.02, 'square'), 24);
+    setTimeout(() => playTone(290, 85, 0.018, 'square'), 50);
+    setTimeout(() => playTone(360, 95, 0.016, 'triangle'), 88);
+    setTimeout(() => playTone(430, 72, 0.013, 'triangle'), 126);
+    setTimeout(() => playTone(250, 82, 0.014, 'sawtooth'), 162);
+}
+
+function playDiceRollCue() {
+    if (!state.ui.soundEnabled) {
+        return;
+    }
+
+    if (!diceRollAudio) {
+        diceRollAudio = new Audio('extras/Sound Effects/dice roll sound.wav');
+        diceRollAudio.preload = 'auto';
+        diceRollAudio.volume = 0.9;
+    }
+
+    try {
+        diceRollAudio.currentTime = 0;
+        const playPromise = diceRollAudio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {
+                playRattleCue();
+            });
+        }
+    } catch {
+        playRattleCue();
+    }
+}
+
+function triggerDiceRollAnimation() {
+    const dice = Array.from(diceContainer.querySelectorAll('.die'));
+    if (dice.length === 0) {
+        return;
+    }
+
+    for (let index = 0; index < dice.length; index += 1) {
+        const die = dice[index];
+        const centeredIndex = index - (dice.length - 1) / 2;
+        const throwDelayMs = index * 30;
+        const throwLiftPx = 8 + Math.max(0, 2 - Math.abs(centeredIndex)) * 4;
+        const throwClusterXPx = centeredIndex * 9;
+        const throwClusterYPx = -Math.abs(centeredIndex) * 1.2;
+        const throwSpinStartDeg = -230 - index * 18;
+        die.style.setProperty('--throw-delay', `${throwDelayMs}ms`);
+        die.style.setProperty('--throw-lift', `${throwLiftPx}px`);
+        die.style.setProperty('--throw-cluster-x', `${throwClusterXPx}px`);
+        die.style.setProperty('--throw-cluster-y', `${throwClusterYPx}px`);
+        die.style.setProperty('--throw-spin-start', `${throwSpinStartDeg}deg`);
+        die.classList.add('rolling');
+        setTimeout(() => {
+            die.classList.remove('rolling');
+            die.style.removeProperty('--throw-delay');
+            die.style.removeProperty('--throw-lift');
+            die.style.removeProperty('--throw-cluster-x');
+            die.style.removeProperty('--throw-cluster-y');
+            die.style.removeProperty('--throw-spin-start');
+        }, 1040 + throwDelayMs);
+    }
+    playDiceRollCue();
+
+    for (const die of dice) {
+        if (die.dataset.value === '1') {
+            die.classList.add('paco-glow');
+            setTimeout(() => die.classList.remove('paco-glow'), 2300);
+        }
+    }
+}
+
+function playTurnAlertCue() {
+    playTone(620, 110, 0.026, 'square');
+    setTimeout(() => playTone(880, 130, 0.024, 'triangle'), 72);
+    setTimeout(() => playTone(1120, 160, 0.02, 'sine'), 150);
+}
+
+function playDudoSuccessCue() {
+    playTone(640, 90, 0.02, 'triangle');
+    setTimeout(() => playTone(860, 100, 0.02, 'triangle'), 68);
+    setTimeout(() => playTone(1080, 130, 0.018, 'sine'), 138);
+    setTimeout(() => playTone(1320, 160, 0.016, 'sine'), 220);
+}
+
+function playDudoFailCue() {
+    playTone(250, 120, 0.02, 'sawtooth');
+    setTimeout(() => playTone(210, 140, 0.018, 'square'), 88);
+    setTimeout(() => playTone(175, 160, 0.015, 'triangle'), 170);
+}
+
+function showEventToast(message, variant = 'round', options = {}) {
+    if (!eventToastLayer) {
+        return;
+    }
+
+    const holdMs = Number.isFinite(options.holdMs) ? options.holdMs : 1700;
+    const exitMs = Number.isFinite(options.exitMs) ? options.exitMs : 620;
+    const removeClass = options.exitAsAside ? 'slide-aside' : 'fade-out';
+
+    const toast = document.createElement('div');
+    toast.className = `event-toast ${variant}`;
+    toast.textContent = message;
+    eventToastLayer.appendChild(toast);
+
+    const startExit = () => {
+        toast.classList.add(removeClass);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, exitMs);
+    };
+
+    setTimeout(startExit, holdMs);
+}
+
+function getCurrentTurnPlayerName() {
+    return getPlayerNameById(state.currentTurnPlayerId);
+}
+
+function maybeAnimateRoundStart(previousRoundNumber) {
+    const roundStarted = state.phase === 'bidding' && state.roundNumber > 0 && state.roundNumber !== previousRoundNumber;
+    if (!roundStarted) {
+        return;
+    }
+
+    const starterName = getCurrentTurnPlayerName();
+    const toastMessage = `Round ${state.roundNumber} starts - ${starterName} opens!`;
+
+    if (!resolutionModal.classList.contains('hidden')) {
+        state.pendingRoundToastMessage = toastMessage;
+        return;
+    }
+
+    showEventToast(toastMessage, 'round', { holdMs: 2600, exitMs: 700 });
+}
+
+function maybeAnimateYourTurn(previousTurnPlayerId, previousRoundNumber) {
+    const becameMyTurn =
+        state.phase === 'bidding'
+        && state.currentTurnPlayerId === state.playerId
+        && previousTurnPlayerId !== state.playerId
+        && !isSelfEliminated();
+
+    if (!becameMyTurn) {
+        if (state.currentTurnPlayerId !== state.playerId) {
+            state.pendingYourTurnToast = false;
+        }
+        return;
+    }
+
+    const roundTransitionTurnChange = state.roundNumber !== previousRoundNumber;
+
+    if (roundTransitionTurnChange) {
+        state.pendingYourTurnToast = true;
+        return;
+    }
+
+    if (!resolutionModal.classList.contains('hidden') || state.deferDiceRollUntilResolutionClose) {
+        state.pendingYourTurnToast = true;
+        return;
+    }
+
+    showEventToast('Your turn!', 'turn', { holdMs: 2400, exitMs: 700 });
+    playTurnAlertCue();
+}
+
+function maybeAnimateDudoCall(resolution) {
+    if (!resolution || resolution.type === 'calza') {
+        return false;
+    }
+
+    const doubterName = resolution.doubterName || 'A player';
+    showEventToast(`${doubterName} calls Dudo!`, 'dudo', { holdMs: 2500, exitAsAside: true, exitMs: 760 });
+    openDudoRevealModal(resolution);
+    return true;
 }
 
 function setJoinState(enabled) {
@@ -228,6 +411,25 @@ function setStatus(message) {
 function setStatusNodes(builder) {
     joinStatusText.replaceChildren(builder());
     gameStatusText.replaceChildren(builder());
+}
+
+function updateWaitingStartNotice() {
+    if (!waitingStartNotice) {
+        return;
+    }
+
+    const isPreGameWaiting = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
+    waitingStartNotice.classList.toggle('hidden', !isPreGameWaiting);
+
+    if (!isPreGameWaiting) {
+        return;
+    }
+
+    if (getActivePlayers().length >= 2) {
+        waitingStartNotice.textContent = 'Waiting for players... click Start Game when everyone is in.';
+    } else {
+        waitingStartNotice.textContent = 'Waiting for players... at least 2 players are needed before Start Game is enabled.';
+    }
 }
 
 function renderLobbyCode() {
@@ -416,12 +618,12 @@ function renderDice() {
     }
 
     const nextDiceKey = JSON.stringify(state.yourDice);
-    if (state.previousDiceKey && state.previousDiceKey !== nextDiceKey) {
-        for (const die of diceContainer.querySelectorAll('.die')) {
-            die.classList.add('flash');
-            setTimeout(() => die.classList.remove('flash'), 320);
+    const didRollChange = state.previousDiceKey && state.previousDiceKey !== nextDiceKey;
+    if (didRollChange) {
+        const shouldDeferRollAnimation = state.deferDiceRollUntilResolutionClose || !resolutionModal.classList.contains('hidden');
+        if (!shouldDeferRollAnimation) {
+            triggerDiceRollAnimation();
         }
-        playRattleCue();
     }
     state.previousDiceKey = nextDiceKey;
 }
@@ -587,15 +789,15 @@ function highlightPlayerNames(container) {
 
 function mergeActionLog(existingLog, incomingLog) {
     if (!Array.isArray(incomingLog) || incomingLog.length === 0) {
-        return existingLog;
+        return Array.isArray(existingLog) ? existingLog.slice(-maxActionLogEntries) : [];
     }
 
     if (!Array.isArray(existingLog) || existingLog.length === 0) {
-        return incomingLog.slice();
+        return incomingLog.slice(-maxActionLogEntries);
     }
 
     if (incomingLog[0] === 'Room created. Waiting for players.' && existingLog.length > 0 && incomingLog.length < existingLog.length) {
-        return incomingLog.slice();
+        return incomingLog.slice(-maxActionLogEntries);
     }
 
     const maxOverlap = Math.min(existingLog.length, incomingLog.length);
@@ -611,11 +813,11 @@ function mergeActionLog(existingLog, incomingLog) {
         }
 
         if (matches) {
-            return existingLog.concat(incomingLog.slice(overlap));
+            return existingLog.concat(incomingLog.slice(overlap)).slice(-maxActionLogEntries);
         }
     }
 
-    return existingLog.concat(incomingLog);
+    return existingLog.concat(incomingLog).slice(-maxActionLogEntries);
 }
 
 function renderActionLog() {
@@ -841,20 +1043,50 @@ function createRevealDie(value, highlight) {
     return die;
 }
 
-function getResolutionKey(resolution) {
+function getResolutionKey(resolution, roundNumber = 0) {
     if (!resolution) {
         return null;
     }
 
-    if (resolution.type === 'calza') {
-        return `calza:${resolution.callerPlayerId}:${resolution.bid?.quantity}:${resolution.bid?.face}:${resolution.actualCount}`;
+    if (Number.isInteger(resolution.eventId)) {
+        return `event:${resolution.eventId}`;
     }
 
-    return `dudo:${resolution.doubterPlayerId}:${resolution.bid?.quantity}:${resolution.bid?.face}:${resolution.actualCount}`;
+    const normalizedRound = Number(roundNumber) || 0;
+
+    if (resolution.type === 'calza') {
+        return `calza:${normalizedRound}:${resolution.callerPlayerId}:${resolution.bid?.quantity}:${resolution.bid?.face}:${resolution.actualCount}`;
+    }
+
+    return `dudo:${normalizedRound}:${resolution.doubterPlayerId}:${resolution.bid?.quantity}:${resolution.bid?.face}:${resolution.actualCount}`;
 }
 
 function closeResolutionModal() {
     resolutionModal.classList.add('hidden');
+    state.deferDiceRollUntilResolutionClose = false;
+
+    if (Array.isArray(state.pendingYourDice)) {
+        state.yourDice = [...state.pendingYourDice];
+        state.pendingYourDice = null;
+        renderDice();
+    }
+
+    if (state.pendingRoundToastMessage) {
+        showEventToast(state.pendingRoundToastMessage, 'round', { holdMs: 2600, exitMs: 700 });
+        state.pendingRoundToastMessage = null;
+    }
+
+    if (state.pendingYourTurnToast) {
+        const isNowMyTurn =
+            state.phase === 'bidding'
+            && state.currentTurnPlayerId === state.playerId
+            && !isSelfEliminated();
+        if (isNowMyTurn) {
+            showEventToast('Your turn!', 'turn', { holdMs: 2400, exitMs: 700 });
+            playTurnAlertCue();
+        }
+        state.pendingYourTurnToast = false;
+    }
 
     if (state.pendingVictoryWinnerName) {
         const winnerName = state.pendingVictoryWinnerName;
@@ -995,19 +1227,25 @@ function openDudoRevealModal(resolution) {
     }
 
     modalTitle.textContent = 'Dudo Reveal';
+    modalCaller.replaceChildren(
+        createColoredPlayerNameNode(resolution.doubterName || 'A player'),
+        document.createTextNode(' called Dudo on '),
+        createColoredPlayerNameNode(resolution.bidderName || 'the bidder'),
+        document.createTextNode("'s bid.")
+    );
 
     const dudoSuccessful = !resolution.bidWasCorrect;
-    modalVerdict.textContent = dudoSuccessful ? 'Dudo is SUCCESSFUL' : 'Dudo FAILED';
+    modalVerdict.textContent = dudoSuccessful ? '✅ Dudo SUCCESSFUL' : '⚠️ Dudo FAILED (bid stands)';
     modalVerdict.classList.toggle('success', dudoSuccessful);
     modalVerdict.classList.toggle('fail', !dudoSuccessful);
 
     modalSummary.append(
-        document.createTextNode('Bid was '),
+        document.createTextNode('Bid challenged: '),
         createInlineBidValue(resolution.bid.quantity, resolution.bid.face, true),
         document.createTextNode('.')
     );
 
-    modalMatchCount.textContent = `Highlighted matches found: ${highlightedCount}.`;
+    modalMatchCount.textContent = `Matching dice found: ${highlightedCount}.`;
     modalMatchCount.classList.toggle('success', dudoSuccessful);
     modalMatchCount.classList.toggle('fail', !dudoSuccessful);
 
@@ -1033,9 +1271,14 @@ function closeConfirmModal() {
 function updateActionAvailability() {
     const canAct = getCanAct();
     const showSidebarRematch = state.phase === 'game_over';
+    const showStartGame = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
+    const canStartGame = showStartGame && getActivePlayers().length >= 2;
 
+    startGameButton.classList.toggle('hidden', !showStartGame);
+    startGameButton.disabled = !canStartGame;
     sidebarRematchButton.classList.toggle('hidden', !showSidebarRematch);
     sidebarRematchButton.disabled = !showSidebarRematch || state.rematchRequested;
+    updateWaitingStartNotice();
 
     if (!canAct) {
         closeQuantityOverflowModal();
@@ -1062,7 +1305,11 @@ function updateActionAvailability() {
 
     if (!canAct) {
         actionHelper.textContent = state.phase === 'waiting'
-            ? 'Waiting for enough players to start bidding.'
+            ? (state.roundNumber === 0
+                ? (canStartGame
+                    ? 'Everyone is in? Any player can press Start Game.'
+                    : 'Waiting for at least 2 players to enable Start Game.')
+                : 'Waiting for enough players to resume bidding.')
             : canCalza
                 ? 'Wait for your turn. You can still call Calza.'
                 : 'Wait for your turn.';
@@ -1108,7 +1355,11 @@ function updateStatusFromState() {
     }
 
     if (state.phase === 'waiting') {
-        setStatus('⌛ Waiting for at least 2 players to start.');
+        if (state.roundNumber === 0) {
+            setStatus('⌛ Waiting Room');
+        } else {
+            setStatus('⌛ Waiting for at least 2 players to continue.');
+        }
         return;
     }
 
@@ -1176,7 +1427,15 @@ function maybePlayBidAcceptedCue() {
 }
 
 function applyStateUpdate(payload) {
+    const previousPhase = state.phase;
     const previousRoundNumber = state.roundNumber;
+    const previousTurnPlayerId = state.currentTurnPlayerId;
+    const incomingResolutionKey = getResolutionKey(payload.lastResolution || null, payload.roundNumber);
+    const incomingIsNewResolution = Boolean(
+        incomingResolutionKey
+        && incomingResolutionKey !== state.lastSeenResolutionKey
+        && payload.lastResolution
+    );
 
     state.roomId = payload.roomId || state.roomId;
     state.phase = payload.phase || 'waiting';
@@ -1186,14 +1445,29 @@ function applyStateUpdate(payload) {
     state.palificoRound = Boolean(payload.palificoRound);
     state.palificoFace = payload.palificoFace || null;
     state.lastBid = payload.lastBid || null;
-    state.yourDice = Array.isArray(payload.yourDice) ? payload.yourDice : [];
+    const incomingYourDice = Array.isArray(payload.yourDice) ? payload.yourDice : [];
+    const shouldHoldDiceUpdate = incomingIsNewResolution
+        || state.deferDiceRollUntilResolutionClose
+        || (!resolutionModal.classList.contains('hidden') && Boolean(payload.lastResolution));
+
+    if (shouldHoldDiceUpdate) {
+        state.pendingYourDice = [...incomingYourDice];
+    } else {
+        state.yourDice = incomingYourDice;
+        state.pendingYourDice = null;
+    }
     state.actionLog = mergeActionLog(state.actionLog, Array.isArray(payload.actionLog) ? payload.actionLog : []);
     state.lastResolution = payload.lastResolution || null;
+    state.deferDiceRollUntilResolutionClose = state.deferDiceRollUntilResolutionClose || incomingIsNewResolution;
     state.winnerPlayerId = payload.winnerPlayerId || null;
 
-    if (state.phase !== 'game_over') {
+    if (previousPhase === 'game_over' && state.phase !== 'game_over') {
         state.lastSeenWinnerPlayerId = null;
         state.pendingVictoryWinnerName = null;
+        state.pendingRoundToastMessage = null;
+        state.pendingYourTurnToast = false;
+        state.pendingYourDice = null;
+        state.deferDiceRollUntilResolutionClose = false;
         state.rematchRequested = false;
         closeVictoryModal();
     }
@@ -1216,18 +1490,52 @@ function applyStateUpdate(payload) {
     renderResolution();
     maybePlayBidAcceptedCue();
 
-    const resolutionKey = getResolutionKey(state.lastResolution);
+    const resolutionKey = getResolutionKey(state.lastResolution, state.roundNumber);
     if (resolutionKey && resolutionKey !== state.lastSeenResolutionKey) {
         state.lastSeenResolutionKey = resolutionKey;
         if (state.lastResolution.type === 'dudo') {
-            playTone(205, 130, 0.02, 'sawtooth');
+            if (state.lastResolution.bidWasCorrect) {
+                playDudoFailCue();
+            } else {
+                playDudoSuccessCue();
+            }
+        } else if (state.lastResolution.type === 'calza') {
+            if (state.lastResolution.bidIsExact) {
+                playDudoSuccessCue();
+            } else {
+                playDudoFailCue();
+            }
         }
-        openDudoRevealModal(state.lastResolution);
+        const handledByDudoAnnouncement = maybeAnimateDudoCall(state.lastResolution);
+        if (!handledByDudoAnnouncement) {
+            openDudoRevealModal(state.lastResolution);
+        }
+    }
+
+    maybeAnimateRoundStart(previousRoundNumber);
+    maybeAnimateYourTurn(previousTurnPlayerId, previousRoundNumber);
+
+    const isSafeToFlushDeferredYourTurn =
+        state.pendingYourTurnToast
+        && state.phase === 'bidding'
+        && state.currentTurnPlayerId === state.playerId
+        && previousRoundNumber === state.roundNumber
+        && resolutionModal.classList.contains('hidden')
+        && !state.deferDiceRollUntilResolutionClose
+        && !state.pendingRoundToastMessage
+        && !isSelfEliminated();
+
+    if (isSafeToFlushDeferredYourTurn) {
+        showEventToast('Your turn!', 'turn', { holdMs: 2400, exitMs: 700 });
+        playTurnAlertCue();
+        state.pendingYourTurnToast = false;
     }
 
     updateActionAvailability();
     updateStatusFromState();
     maybeShowVictoryCelebration();
+
+    state.previousTurnPlayerId = state.currentTurnPlayerId;
 }
 
 function connectToMatch() {
@@ -1305,12 +1613,18 @@ function connectToMatch() {
         state.lastSeenResolutionKey = null;
         state.lastSeenWinnerPlayerId = null;
         state.pendingVictoryWinnerName = null;
+        state.pendingRoundToastMessage = null;
+        state.pendingYourTurnToast = false;
+        state.deferDiceRollUntilResolutionClose = false;
+        state.pendingYourDice = null;
         state.rematchRequested = false;
         state.previousDiceKey = '';
         state.previousBidKey = '';
         state.playerColorByName = {};
         state.nextPlayerColorIndex = 0;
         state.socket = null;
+
+        updateWaitingStartNotice();
 
         renderPlayers();
         renderDice();
@@ -1398,8 +1712,18 @@ function requestRematch() {
     playTone(760, 90, 0.014, 'triangle');
 }
 
+function requestStartGame() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN || startGameButton.disabled) {
+        return;
+    }
+
+    state.socket.send(JSON.stringify({ type: 'start_game' }));
+    playTone(680, 95, 0.015, 'triangle');
+}
+
 joinButton.addEventListener('click', connectToMatch);
 leaveButton.addEventListener('click', leaveMatch);
+startGameButton.addEventListener('click', requestStartGame);
 bidButton.addEventListener('click', placeBid);
 calzaButton.addEventListener('click', callCalza);
 dudoButton.addEventListener('click', callDudo);
@@ -1456,6 +1780,7 @@ confirmAcceptButton.addEventListener('click', () => {
 
 addTouchFeedback(joinButton);
 addTouchFeedback(leaveButton);
+addTouchFeedback(startGameButton);
 addTouchFeedback(sidebarRematchButton);
 addTouchFeedback(bidButton);
 addTouchFeedback(calzaButton);

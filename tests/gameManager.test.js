@@ -78,3 +78,41 @@ test('winner can rematch first without removing rematch path for remaining playe
     assert.ok(rematchGame);
     assert.equal(rematchGame.players.length, 2);
 });
+
+test('manual start_game begins bidding from waiting room', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'manual-start' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'manual-start' });
+
+    const game = manager.games.get('manual-start');
+    assert.ok(game);
+    assert.equal(game.round.phase, 'waiting');
+
+    manager.handleStartGame(wsAlice);
+
+    assert.equal(game.round.phase, 'bidding');
+    assert.equal(game.round.roundNumber, 1);
+});
+
+test('start_game returns error when already started', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'manual-start-error' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'manual-start-error' });
+
+    manager.handleStartGame(wsAlice);
+    manager.handleStartGame(wsBob);
+
+    const latestError = sent.findLast(entry => entry.ws === wsBob && entry.payload.type === 'error');
+    assert.ok(latestError);
+    assert.match(latestError.payload.message, /already in progress|Cannot manually start/i);
+});
