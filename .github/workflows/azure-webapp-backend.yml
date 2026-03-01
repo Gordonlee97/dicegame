@@ -1,5 +1,8 @@
 name: Deploy Backend to Azure Web App
 
+env:
+  AZURE_WEBAPP_NAME: dicegame-backend-brgpdrdyh8b9fka2
+
 on:
   workflow_run:
     workflows:
@@ -30,6 +33,7 @@ jobs:
           mkdir -p backend-dist
           cp server.js package.json package-lock.json index.html styles.css script.js config.js backend-dist/
           cp -r game backend-dist/
+          cp -r auth backend-dist/
           cp -r node_modules backend-dist/
           cd backend-dist
           zip -r ../backend.zip .
@@ -37,7 +41,7 @@ jobs:
       - name: Validate publish profile secret
         env:
           PUBLISH_PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND }}
-          EXPECTED_APP_NAME: dicegame-backend
+          EXPECTED_APP_NAME: ${{ env.AZURE_WEBAPP_NAME }}
         run: |
           python - <<'PY'
           import os
@@ -70,7 +74,7 @@ jobs:
                   matching_profiles.append(method or 'unknown')
 
           if not matching_profiles:
-              print('::error::Publish profile XML does not match app "dicegame-backend" (msdeploySite mismatch). Download publish profile from that exact app/slot and update secret.')
+              print(f'::error::Publish profile XML does not match app "{expected}" (msdeploySite mismatch). Download publish profile from that exact app/slot and update secret.')
               sys.exit(1)
 
           print(f'Publish profile XML is valid and matches target app. Found methods: {", ".join(matching_profiles)}')
@@ -79,6 +83,6 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: dicegame-backend
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND }}
           package: backend.zip

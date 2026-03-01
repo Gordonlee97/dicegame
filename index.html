@@ -23,12 +23,49 @@
         <section id="join-screen" class="screen" aria-label="Join screen">
             <h1 class="title-display">Perudo</h1>
             <p class="join-subtitle">Enter a name and room to start playing.</p>
-            <section class="join-panel" aria-label="Join match">
-                <label for="player-name">Name</label>
-                <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
-                <label for="room-id">Room Code</label>
-                <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
-                <button id="join-button" type="button">Join Table</button>
+            <section class="join-auth-shell" aria-label="Join match">
+                <div class="auth-left-pane">
+                    <div class="auth-mode-buttons" role="group" aria-label="Sign in options">
+                        <button id="auth-mode-guest" class="auth-mode-button selected" type="button">Guest</button>
+                        <button id="auth-mode-account" class="auth-mode-button" type="button">Account</button>
+                    </div>
+
+                    <section id="guest-form" class="auth-form-panel" aria-label="Guest form">
+                        <label for="player-name" id="guest-name-label">Display Name</label>
+                        <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
+
+                        <label for="room-id">Room Code</label>
+                        <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
+
+                        <button id="join-button" type="button">Join Table</button>
+                    </section>
+
+                    <section id="account-form" class="auth-form-panel hidden" aria-label="Account form">
+                        <div class="account-action-buttons" role="group" aria-label="Account action">
+                            <button id="account-action-login" class="account-action-button selected" type="button">Sign In</button>
+                            <button id="account-action-register" class="account-action-button" type="button">Create Account</button>
+                        </div>
+
+                        <label for="account-username" id="account-username-label">Username</label>
+                        <input id="account-username" type="text" maxlength="32" autocomplete="username">
+
+                        <label for="account-password" id="account-password-label">Password</label>
+                        <input id="account-password" type="password" maxlength="120" autocomplete="current-password">
+
+                        <label for="account-display-name" id="account-display-name-label" class="hidden">Display Name</label>
+                        <input id="account-display-name" class="hidden" type="text" maxlength="20" autocomplete="nickname">
+
+                        <label for="room-id-account">Room Code</label>
+                        <input id="room-id-account" type="text" maxlength="24" value="lobby" autocomplete="off">
+
+                        <button id="account-submit-button" type="button">Sign In & Join</button>
+                    </section>
+                </div>
+
+                <aside class="auth-right-pane" aria-hidden="true">
+                    <h2>Welcome back</h2>
+                    <p>Sign in to keep your identity across matches, or jump in instantly as a guest.</p>
+                </aside>
             </section>
             <p id="status" aria-live="polite">Not connected.</p>
         </section>
@@ -110,6 +147,24 @@
                     <ul id="action-log"></ul>
                 </section>
             </aside>
+
+            <section id="room-chat" class="room-chat" aria-label="Room chat">
+                <button id="chat-toggle-button" type="button" class="chat-toggle-button" aria-expanded="false" aria-controls="chat-panel">
+                    💬 Chat
+                    <span id="chat-unread-badge" class="chat-unread-badge hidden" aria-label="Unread messages">0</span>
+                </button>
+                <section id="chat-panel" class="chat-panel hidden" aria-label="Chat panel">
+                    <header class="chat-panel-header">
+                        <h2>Room Chat</h2>
+                        <button id="chat-close-button" type="button" class="modal-close">Close</button>
+                    </header>
+                    <ul id="chat-messages" class="chat-messages" aria-live="polite"></ul>
+                    <div class="chat-input-row">
+                        <input id="chat-input" type="text" maxlength="280" placeholder="Message players in this room..." autocomplete="off">
+                        <button id="chat-send-button" type="button">Send</button>
+                    </div>
+                </section>
+            </section>
         </section>
 
         <section id="event-toast-layer" class="event-toast-layer" aria-live="polite" aria-atomic="true"></section>

@@ -6,10 +6,25 @@ const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
 const startGameButton = document.getElementById('start-game-button');
 const sidebarRematchButton = document.getElementById('sidebar-rematch-button');
+const authModeGuestButton = document.getElementById('auth-mode-guest');
+const authModeAccountButton = document.getElementById('auth-mode-account');
+const guestForm = document.getElementById('guest-form');
+const accountForm = document.getElementById('account-form');
+const accountActionLoginButton = document.getElementById('account-action-login');
+const accountActionRegisterButton = document.getElementById('account-action-register');
 const quantityButtons = document.getElementById('quantity-buttons');
 const faceButtons = document.getElementById('face-buttons');
 const playerNameInput = document.getElementById('player-name');
+const guestNameLabel = document.getElementById('guest-name-label');
+const accountUsernameLabel = document.getElementById('account-username-label');
+const accountPasswordLabel = document.getElementById('account-password-label');
+const accountDisplayNameLabel = document.getElementById('account-display-name-label');
+const accountUsernameInput = document.getElementById('account-username');
+const accountPasswordInput = document.getElementById('account-password');
+const accountDisplayNameInput = document.getElementById('account-display-name');
 const roomIdInput = document.getElementById('room-id');
+const roomIdAccountInput = document.getElementById('room-id-account');
+const accountSubmitButton = document.getElementById('account-submit-button');
 const playersList = document.getElementById('players-list');
 const joinStatusText = document.getElementById('status');
 const gameStatusText = document.getElementById('status-game');
@@ -63,11 +78,22 @@ const quantityOverflowButtons = document.getElementById('quantity-overflow-butto
 const resolutionPanel = document.querySelector('.resolution-panel');
 const logSidebar = document.querySelector('.log-sidebar');
 const eventToastLayer = document.getElementById('event-toast-layer');
+const chatToggleButton = document.getElementById('chat-toggle-button');
+const chatUnreadBadge = document.getElementById('chat-unread-badge');
+const roomChat = document.getElementById('room-chat');
+const chatPanel = document.getElementById('chat-panel');
+const chatCloseButton = document.getElementById('chat-close-button');
+const chatMessagesList = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendButton = document.getElementById('chat-send-button');
 
 const state = {
     socket: null,
     playerId: null,
     roomId: null,
+    authToken: null,
+    authMode: 'guest',
+    accountAction: 'login',
     isConnected: false,
     phase: 'waiting',
     players: [],
@@ -94,6 +120,9 @@ const state = {
     deferDiceRollUntilResolutionClose: false,
     pendingYourDice: null,
     rematchRequested: false,
+    chatMessages: [],
+    chatUnreadCount: 0,
+    chatOpen: false,
     playerColorByName: {},
     nextPlayerColorIndex: 0,
     ui: {
@@ -106,6 +135,7 @@ const state = {
 
 const playerNameColorPalette = ['#2563eb', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#0f766e'];
 const maxActionLogEntries = 120;
+const maxChatMessages = 150;
 
 const pipPositionsByValue = {
     1: [5],
@@ -295,6 +325,11 @@ function playDudoFailCue() {
     setTimeout(() => playTone(175, 160, 0.015, 'triangle'), 170);
 }
 
+function playChatUnreadCue() {
+    playTone(930, 55, 0.011, 'triangle');
+    setTimeout(() => playTone(1140, 75, 0.01, 'sine'), 62);
+}
+
 function showEventToast(message, variant = 'round', options = {}) {
     if (!eventToastLayer) {
         return;
@@ -386,7 +421,109 @@ function maybeAnimateDudoCall(resolution) {
 function setJoinState(enabled) {
     joinButton.disabled = !enabled;
     playerNameInput.disabled = !enabled;
+    authModeGuestButton.disabled = !enabled;
+    authModeAccountButton.disabled = !enabled;
+    accountActionLoginButton.disabled = !enabled;
+    accountActionRegisterButton.disabled = !enabled;
+    accountUsernameInput.disabled = !enabled;
+    accountPasswordInput.disabled = !enabled;
+    accountDisplayNameInput.disabled = !enabled;
+    accountSubmitButton.disabled = !enabled;
     roomIdInput.disabled = !enabled;
+    roomIdAccountInput.disabled = !enabled;
+}
+
+function getApiBaseUrl() {
+    const appConfig = window.APP_CONFIG || {};
+    const configuredApiBaseUrl = typeof appConfig.API_BASE_URL === 'string' ? appConfig.API_BASE_URL.trim() : '';
+    if (configuredApiBaseUrl) {
+        return configuredApiBaseUrl.replace(/\/$/, '');
+    }
+
+    return `${window.location.protocol}//${window.location.host}`;
+}
+
+function setAuthMode(nextMode) {
+    state.authMode = nextMode === 'account' ? 'account' : 'guest';
+    const isAccountMode = state.authMode === 'account';
+
+    authModeGuestButton.classList.toggle('selected', !isAccountMode);
+    authModeAccountButton.classList.toggle('selected', isAccountMode);
+    guestForm.classList.toggle('hidden', isAccountMode);
+    accountForm.classList.toggle('hidden', !isAccountMode);
+}
+
+function setAccountAction(nextAction) {
+    state.accountAction = nextAction === 'register' ? 'register' : 'login';
+    const isRegister = state.accountAction === 'register';
+
+    accountActionLoginButton.classList.toggle('selected', !isRegister);
+    accountActionRegisterButton.classList.toggle('selected', isRegister);
+    accountDisplayNameInput.classList.toggle('hidden', !isRegister);
+    accountDisplayNameLabel.classList.toggle('hidden', !isRegister);
+    accountPasswordInput.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
+    accountSubmitButton.textContent = isRegister ? 'Create Account & Join' : 'Sign In & Join';
+}
+
+async function loginWithAccountCredentials() {
+    const username = accountUsernameInput.value.trim();
+    const password = accountPasswordInput.value;
+
+    if (!username || !password) {
+        throw new Error('Username and password are required for account sign-in.');
+    }
+
+    const response = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password })
+    });
+
+    let payload;
+    try {
+        payload = await response.json();
+    } catch {
+        throw new Error('Unable to sign in right now.');
+    }
+
+    if (!response.ok || !payload.ok || !payload.token) {
+        throw new Error(payload.message || 'Sign-in failed.');
+    }
+
+    return payload;
+}
+
+async function registerWithAccountCredentials() {
+    const username = accountUsernameInput.value.trim();
+    const password = accountPasswordInput.value;
+    const displayName = accountDisplayNameInput.value.trim();
+
+    if (!username || !password) {
+        throw new Error('Username and password are required for account creation.');
+    }
+
+    const response = await fetch(`${getApiBaseUrl()}/api/auth/register-public`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password, displayName })
+    });
+
+    let payload;
+    try {
+        payload = await response.json();
+    } catch {
+        throw new Error('Unable to create account right now.');
+    }
+
+    if (!response.ok || !payload.ok || !payload.token) {
+        throw new Error(payload.message || 'Account creation failed.');
+    }
+
+    return payload;
 }
 
 function setLeaveState(enabled) {
@@ -844,6 +981,132 @@ function renderActionLog() {
     actionLogList.scrollTop = actionLogList.scrollHeight;
 }
 
+function updateChatVisibility() {
+    roomChat.classList.toggle('hidden', !state.isConnected);
+}
+
+function renderChatUnreadBadge() {
+    const count = Math.max(0, Number(state.chatUnreadCount) || 0);
+    chatUnreadBadge.textContent = String(count);
+    chatUnreadBadge.classList.toggle('hidden', count < 1);
+}
+
+function scrollChatToBottom() {
+    chatMessagesList.scrollTop = chatMessagesList.scrollHeight;
+}
+
+function renderChatMessages() {
+    chatMessagesList.replaceChildren();
+
+    if (!Array.isArray(state.chatMessages) || state.chatMessages.length === 0) {
+        const emptyState = document.createElement('li');
+        emptyState.className = 'chat-message-empty';
+        emptyState.textContent = 'No messages yet.';
+        chatMessagesList.appendChild(emptyState);
+        return;
+    }
+
+    for (const chatMessage of state.chatMessages) {
+        ensurePlayerColor(chatMessage.playerName || 'Player');
+
+        const item = document.createElement('li');
+        item.className = 'chat-message-item';
+
+        const meta = document.createElement('p');
+        meta.className = 'chat-message-meta';
+
+        const sender = createColoredPlayerNameNode(chatMessage.playerName || 'Player');
+        const sentAt = Number(chatMessage.sentAt);
+        const hasTimestamp = Number.isFinite(sentAt) && sentAt > 0;
+        const timeText = hasTimestamp ? new Date(sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+        meta.append(sender, document.createTextNode(` • ${timeText}`));
+
+        const content = document.createElement('p');
+        content.textContent = String(chatMessage.message || '');
+
+        item.append(meta, content);
+        chatMessagesList.appendChild(item);
+    }
+
+    scrollChatToBottom();
+}
+
+function setChatOpen(open) {
+    state.chatOpen = Boolean(open);
+    chatPanel.classList.toggle('hidden', !state.chatOpen);
+    chatToggleButton.classList.toggle('hidden', state.chatOpen);
+    chatToggleButton.setAttribute('aria-expanded', state.chatOpen ? 'true' : 'false');
+
+    if (state.chatOpen) {
+        state.chatUnreadCount = 0;
+        renderChatUnreadBadge();
+        renderChatMessages();
+        setTimeout(() => chatInput.focus(), 0);
+    }
+}
+
+function normalizeChatMessagePayload(payload) {
+    return {
+        roomId: payload.roomId || state.roomId,
+        playerId: payload.playerId || '',
+        playerName: String(payload.playerName || 'Player'),
+        message: String(payload.message || '').trim(),
+        sentAt: Number(payload.sentAt) || Date.now()
+    };
+}
+
+function appendChatMessage(payload, options = {}) {
+    const normalized = normalizeChatMessagePayload(payload);
+    if (!normalized.message || normalized.roomId !== state.roomId) {
+        return;
+    }
+
+    state.chatMessages.push(normalized);
+    if (state.chatMessages.length > maxChatMessages) {
+        state.chatMessages.splice(0, state.chatMessages.length - maxChatMessages);
+    }
+
+    if (!state.chatOpen && normalized.playerId !== state.playerId && options.countUnread !== false) {
+        state.chatUnreadCount += 1;
+        playChatUnreadCue();
+    }
+
+    renderChatUnreadBadge();
+    if (state.chatOpen) {
+        renderChatMessages();
+    }
+}
+
+function applyChatHistory(payload) {
+    if (!payload || payload.roomId !== state.roomId) {
+        return;
+    }
+
+    state.chatMessages = [];
+    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+    for (const message of messages) {
+        appendChatMessage(message, { countUnread: false });
+    }
+
+    if (state.chatOpen) {
+        renderChatMessages();
+    }
+}
+
+function sendChatMessage() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+
+    const message = chatInput.value.trim();
+    if (!message) {
+        return;
+    }
+
+    state.socket.send(JSON.stringify({ type: 'chat_message', message }));
+    chatInput.value = '';
+}
+
 function renderResolution() {
     if (!state.lastResolution) {
         resolutionText.textContent = 'No Dudo/Calza resolution yet.';
@@ -1273,11 +1536,14 @@ function updateActionAvailability() {
     const showSidebarRematch = state.phase === 'game_over';
     const showStartGame = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
     const canStartGame = showStartGame && getActivePlayers().length >= 2;
+    const canChat = state.isConnected && Boolean(state.roomId);
 
     startGameButton.classList.toggle('hidden', !showStartGame);
     startGameButton.disabled = !canStartGame;
     sidebarRematchButton.classList.toggle('hidden', !showSidebarRematch);
     sidebarRematchButton.disabled = !showSidebarRematch || state.rematchRequested;
+    chatToggleButton.disabled = !canChat;
+    chatSendButton.disabled = !canChat;
     updateWaitingStartNotice();
 
     if (!canAct) {
@@ -1538,9 +1804,14 @@ function applyStateUpdate(payload) {
     state.previousTurnPlayerId = state.currentTurnPlayerId;
 }
 
-function connectToMatch() {
-    const name = playerNameInput.value.trim() || 'Player';
-    const roomId = roomIdInput.value.trim() || 'lobby';
+async function connectToMatch() {
+    const guestName = playerNameInput.value.trim() || 'Player';
+    const isAccountMode = state.authMode === 'account';
+    const roomId = isAccountMode
+        ? (roomIdAccountInput.value.trim() || 'lobby')
+        : (roomIdInput.value.trim() || 'lobby');
+    let joinName = guestName;
+    let authToken = null;
 
     if (state.socket) {
         state.socket.close();
@@ -1548,13 +1819,32 @@ function connectToMatch() {
     }
 
     setJoinState(false);
+    setStatus(isAccountMode
+        ? (state.accountAction === 'register' ? 'Creating account...' : 'Signing in...')
+        : 'Connecting...');
+
+    if (isAccountMode) {
+        try {
+            const authResult = state.accountAction === 'register'
+                ? await registerWithAccountCredentials()
+                : await loginWithAccountCredentials();
+            authToken = authResult.token;
+            joinName = authResult.displayName || authResult.username || 'Player';
+            state.authToken = authToken;
+        } catch (error) {
+            setStatus(error.message || (state.accountAction === 'register' ? 'Account creation failed.' : 'Sign-in failed.'));
+            setJoinState(true);
+            return;
+        }
+    }
+
     setStatus('Connecting...');
 
     const socket = new WebSocket(getWsUrl());
     state.socket = socket;
 
     socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ type: 'join', name, roomId }));
+        socket.send(JSON.stringify({ type: 'join', name: joinName, roomId, authToken }));
     });
 
     socket.addEventListener('message', event => {
@@ -1570,13 +1860,30 @@ function connectToMatch() {
             state.isConnected = true;
             state.playerId = payload.playerId;
             state.roomId = payload.roomId;
+            state.authToken = authToken;
             state.rematchRequested = false;
+            state.chatMessages = [];
+            state.chatUnreadCount = 0;
+            setChatOpen(false);
             state.pendingVictoryWinnerName = null;
             showGameScreen();
             setLeaveState(true);
+            updateChatVisibility();
+            renderChatUnreadBadge();
+            renderChatMessages();
             applyStateUpdate(payload);
             maybeHideLoadingScreen();
             playTone(780, 90, 0.018);
+            return;
+        }
+
+        if (payload.type === 'chat_history') {
+            applyChatHistory(payload);
+            return;
+        }
+
+        if (payload.type === 'chat') {
+            appendChatMessage(payload);
             return;
         }
 
@@ -1603,6 +1910,7 @@ function connectToMatch() {
         state.currentTurnPlayerId = null;
         state.playerId = null;
         state.roomId = null;
+        state.authToken = null;
         state.lastBid = null;
         state.yourDice = [];
         state.actionLog = [];
@@ -1618,6 +1926,9 @@ function connectToMatch() {
         state.deferDiceRollUntilResolutionClose = false;
         state.pendingYourDice = null;
         state.rematchRequested = false;
+        state.chatMessages = [];
+        state.chatUnreadCount = 0;
+        state.chatOpen = false;
         state.previousDiceKey = '';
         state.previousBidKey = '';
         state.playerColorByName = {};
@@ -1633,6 +1944,10 @@ function connectToMatch() {
         renderResolution();
         updateActionAvailability();
         renderLobbyCode();
+        setChatOpen(false);
+        renderChatUnreadBadge();
+        renderChatMessages();
+        updateChatVisibility();
 
         setJoinState(true);
         setLeaveState(false);
@@ -1721,7 +2036,46 @@ function requestStartGame() {
     playTone(680, 95, 0.015, 'triangle');
 }
 
+function toggleChatPanel() {
+    setChatOpen(!state.chatOpen);
+}
+
 joinButton.addEventListener('click', connectToMatch);
+authModeGuestButton.addEventListener('click', () => {
+    setAuthMode('guest');
+});
+authModeAccountButton.addEventListener('click', () => {
+    setAuthMode('account');
+});
+accountActionLoginButton.addEventListener('click', () => {
+    setAccountAction('login');
+});
+accountActionRegisterButton.addEventListener('click', () => {
+    setAccountAction('register');
+});
+accountSubmitButton.addEventListener('click', connectToMatch);
+accountPasswordInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
+accountDisplayNameInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
+roomIdInput.addEventListener('input', () => {
+    roomIdAccountInput.value = roomIdInput.value;
+});
+roomIdAccountInput.addEventListener('input', () => {
+    roomIdInput.value = roomIdAccountInput.value;
+});
 leaveButton.addEventListener('click', leaveMatch);
 startGameButton.addEventListener('click', requestStartGame);
 bidButton.addEventListener('click', placeBid);
@@ -1729,6 +2083,17 @@ calzaButton.addEventListener('click', callCalza);
 dudoButton.addEventListener('click', callDudo);
 rematchButton.addEventListener('click', requestRematch);
 sidebarRematchButton.addEventListener('click', requestRematch);
+chatToggleButton.addEventListener('click', toggleChatPanel);
+chatCloseButton.addEventListener('click', () => setChatOpen(false));
+chatSendButton.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    sendChatMessage();
+});
 modalCloseButton.addEventListener('click', closeResolutionModal);
 modalOverlay.addEventListener('click', closeResolutionModal);
 victoryCloseButton.addEventListener('click', closeVictoryModal);
@@ -1779,6 +2144,11 @@ confirmAcceptButton.addEventListener('click', () => {
 });
 
 addTouchFeedback(joinButton);
+addTouchFeedback(accountSubmitButton);
+addTouchFeedback(authModeGuestButton);
+addTouchFeedback(authModeAccountButton);
+addTouchFeedback(accountActionLoginButton);
+addTouchFeedback(accountActionRegisterButton);
 addTouchFeedback(leaveButton);
 addTouchFeedback(startGameButton);
 addTouchFeedback(sidebarRematchButton);
@@ -1788,14 +2158,21 @@ addTouchFeedback(dudoButton);
 addTouchFeedback(rematchButton);
 addTouchFeedback(settingsToggle);
 addTouchFeedback(confirmAcceptButton);
+addTouchFeedback(chatToggleButton);
+addTouchFeedback(chatSendButton);
 
 window.addEventListener('load', maybeHideLoadingScreen);
 
 setFontScale(fontScaleSelect.value);
 setShowAdvanced(advancedToggle.checked);
 setDarkMode(darkModeToggle.checked);
+setAuthMode('guest');
+setAccountAction('login');
 setLeaveState(false);
 updateActionAvailability();
 renderLobbyCode();
+updateChatVisibility();
+renderChatUnreadBadge();
+renderChatMessages();
 showJoinScreen();
 setStatus('Not connected.');

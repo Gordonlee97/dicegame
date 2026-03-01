@@ -53,6 +53,10 @@ main {
     display: none;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .title-display {
     margin: 0;
     font-family: "Cinzel", "Palatino Linotype", Georgia, serif;
@@ -79,22 +83,131 @@ p {
     color: var(--muted);
 }
 
-.join-panel {
+.join-auth-shell {
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
     display: grid;
-    grid-template-columns: auto 1fr auto 1fr auto;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 12px;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.9fr);
+    background: #fff;
+    box-shadow: var(--shadow-lg);
+    margin: 0 auto 12px;
+    width: min(900px, 100%);
 }
 
-.join-panel label {
+.auth-left-pane {
+    padding: 18px 20px 20px;
+    display: grid;
+    gap: 14px;
+}
+
+.auth-right-pane {
+    border-left: 1px solid #dde6f4;
+    background: linear-gradient(180deg, #f4f8ff 0%, #eef5ff 100%);
+    padding: 22px 20px;
+    display: grid;
+    align-content: center;
+    gap: 8px;
+}
+
+.auth-right-pane h2 {
+    font-size: 1.22rem;
+    color: #203758;
+}
+
+.auth-right-pane p {
+    color: #3f516a;
+    line-height: 1.5;
+    font-size: 0.9rem;
+}
+
+.auth-mode-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid #d9e4f5;
+    border-radius: 12px;
+    background: #f6f9ff;
+}
+
+.auth-mode-button {
+    min-height: 40px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #516685;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    padding: 0 12px;
+    cursor: pointer;
+    transition: border-color 130ms ease, background-color 130ms ease, color 120ms ease, transform 100ms ease;
+}
+
+.auth-mode-button:hover:not(:disabled) {
+    color: #2e496f;
+}
+
+.auth-mode-button.selected {
+    border-color: #c9d9f0;
+    background: #fff;
+    color: #1f457d;
+    box-shadow: var(--shadow-sm);
+}
+
+.account-action-buttons {
+    display: inline-grid;
+    grid-auto-flow: column;
+    justify-content: start;
+    gap: 6px;
+    margin-top: -2px;
+}
+
+.account-action-button {
+    min-height: 32px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #5c6f8e;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0 10px;
+    cursor: pointer;
+    transition: border-color 130ms ease, background-color 130ms ease, color 120ms ease;
+}
+
+.account-action-button:hover:not(:disabled) {
+    border-color: #d5e1f2;
+    background: #f4f8ff;
+    color: #2e4d79;
+}
+
+.account-action-button.selected {
+    border-color: #cbdcf3;
+    background: #eef5ff;
+    color: #18447f;
+}
+
+.auth-form-panel {
+    display: grid;
+    gap: 7px;
+    border: 1px solid #e2eaf7;
+    border-radius: 14px;
+    background: #fbfdff;
+    padding: 12px;
+}
+
+.auth-form-panel label {
     font-weight: 600;
     color: #34445d;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
-.join-panel input,
+.auth-form-panel input,
 .setting-item select {
-    min-height: 46px;
+    min-height: 44px;
     border-radius: 12px;
     border: 1px solid var(--border);
     background: #fff;
@@ -103,7 +216,7 @@ p {
     padding: 10px 12px;
 }
 
-.join-panel input:focus-visible,
+.auth-form-panel input:focus-visible,
 .setting-item select:focus-visible,
 .option-btn:focus-visible,
 button:focus-visible,
@@ -112,11 +225,19 @@ button:focus-visible,
     box-shadow: var(--glow);
 }
 
+#join-button,
+#account-submit-button {
+    justify-self: stretch;
+    width: 100%;
+    margin-top: 4px;
+}
+
 #status {
-    min-height: 22px;
+    min-height: 24px;
     text-align: center;
-    color: #3f516a;
+    color: #405775;
     font-weight: 600;
+    font-size: 0.9rem;
 }
 
 #game-screen {
@@ -560,6 +681,9 @@ button:focus-visible,
 #rematch-button,
 #start-game-button,
 #sidebar-rematch-button,
+.chat-toggle-button,
+#chat-send-button,
+#account-submit-button,
 .modal-close,
 #confirm-accept-button {
     min-height: 46px;
@@ -665,13 +789,22 @@ button:focus-visible,
 }
 
 #join-button,
-#bid-button {
+#bid-button,
+#account-submit-button {
     background: var(--accent);
     color: #fff;
 }
 
+#chat-send-button {
+    background: var(--accent);
+    color: #fff;
+    min-width: 78px;
+}
+
 #join-button:hover:not(:disabled),
-#bid-button:hover:not(:disabled) {
+#bid-button:hover:not(:disabled),
+#account-submit-button:hover:not(:disabled),
+#chat-send-button:hover:not(:disabled) {
     background: var(--accent-strong);
 }
 
@@ -794,6 +927,149 @@ button:disabled {
     min-height: 0;
     align-self: start;
     overflow: hidden;
+}
+
+.room-chat {
+    position: fixed;
+    right: 22px;
+    bottom: 20px;
+    z-index: 55;
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+}
+
+.room-chat.hidden {
+    display: none;
+}
+
+.chat-toggle-button {
+    min-width: 126px;
+    min-height: 44px;
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    box-shadow: var(--shadow-sm);
+}
+
+.chat-toggle-button.hidden {
+    display: none;
+}
+
+.chat-toggle-button:hover:not(:disabled) {
+    border-color: #a8c2e8;
+    background: var(--panel);
+}
+
+.chat-unread-badge {
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--critical);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+    padding: 0 4px;
+}
+
+.chat-unread-badge.hidden {
+    display: none;
+}
+
+.chat-panel {
+    width: min(360px, calc(100vw - 28px));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    padding: 10px;
+    display: grid;
+    gap: 9px;
+}
+
+.chat-panel.hidden {
+    display: none;
+}
+
+.chat-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#chat-close-button {
+    min-height: 38px;
+    border-radius: 11px;
+    padding: 0 10px;
+    font-size: 0.82rem;
+}
+
+.chat-messages {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+    max-height: 250px;
+    min-height: 72px;
+    overflow-y: auto;
+}
+
+.chat-message-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 7px 8px;
+    line-height: 1.35;
+    color: #2d415f;
+    font-size: 0.84rem;
+}
+
+.chat-message-meta {
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.chat-message-empty {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    min-height: 72px;
+    display: grid;
+    place-items: center;
+}
+
+.chat-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+#chat-input {
+    min-height: 44px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    font-size: 0.9rem;
+    padding: 9px 11px;
+}
+
+#chat-input:focus-visible {
+    outline: none;
+    box-shadow: var(--glow);
 }
 
 .log-panel {
@@ -1357,7 +1633,8 @@ body.dark-mode #status {
 body.dark-mode .option-btn,
 body.dark-mode .icon-button,
 body.dark-mode .modal-close,
-body.dark-mode .join-panel input,
+body.dark-mode .auth-form-panel input,
+body.dark-mode #chat-input,
 body.dark-mode .setting-item select,
 body.dark-mode .face-option-die,
 body.dark-mode .inline-bid-die,
@@ -1389,6 +1666,54 @@ body.dark-mode .event-toast.turn {
 body.dark-mode .event-toast.round {
     border-color: #4a6fa8;
     background: rgba(20, 46, 84, 0.96);
+}
+
+body.dark-mode .chat-panel,
+body.dark-mode .chat-message-item,
+body.dark-mode .chat-message-empty,
+body.dark-mode .chat-toggle-button,
+body.dark-mode .join-auth-shell,
+body.dark-mode .auth-left-pane,
+body.dark-mode .auth-right-pane,
+body.dark-mode .auth-mode-button,
+body.dark-mode .account-action-button {
+    background: #162131;
+    border-color: #30425c;
+    color: var(--text);
+}
+
+body.dark-mode .auth-mode-buttons {
+    background: #1b2a3f;
+    border-color: #30425c;
+}
+
+body.dark-mode .auth-mode-button.selected {
+    background: #132238;
+    border-color: #3c5680;
+    color: #dbe8ff;
+}
+
+body.dark-mode .account-action-button.selected {
+    background: #14263f;
+    border-color: #3a5888;
+    color: #d8e7ff;
+}
+
+body.dark-mode .auth-form-panel {
+    background: #182639;
+    border-color: #30425c;
+}
+
+body.dark-mode .chat-message-item {
+    color: var(--text);
+}
+
+body.dark-mode .auth-right-pane {
+    background: linear-gradient(180deg, #1b2a3e 0%, #172436 100%);
+}
+
+body.dark-mode .auth-right-pane p {
+    color: var(--muted);
 }
 
 body.dark-mode .option-btn:disabled,
@@ -1481,8 +1806,38 @@ body.dark-mode .face-option:disabled .face-option-die {
         padding: 10px;
     }
 
-    .join-panel {
+    .join-auth-shell {
         grid-template-columns: 1fr;
+    }
+
+    .auth-right-pane {
+        border-left: none;
+        border-top: 1px solid #dde6f4;
+        padding: 14px;
+    }
+
+    .auth-left-pane {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .auth-mode-buttons {
+        gap: 4px;
+        padding: 4px;
+    }
+
+    .auth-form-panel {
+        padding: 10px;
+    }
+
+    .account-action-buttons {
+        grid-template-columns: 1fr 1fr;
+        display: grid;
+    }
+
+    .account-action-button {
+        width: 100%;
+        min-height: 34px;
     }
 
     #game-screen {
@@ -1557,6 +1912,15 @@ body.dark-mode .face-option:disabled .face-option-die {
         font-size: 0.92rem;
         padding: 9px 11px;
     }
+
+    .room-chat {
+        right: 10px;
+        bottom: 10px;
+    }
+
+    .chat-panel {
+        width: min(360px, calc(100vw - 20px));
+    }
 }
 
 @media (hover: none) {
@@ -1565,6 +1929,7 @@ body.dark-mode .face-option:disabled .face-option-die {
     #bid-button:hover:not(:disabled),
     #calza-button:hover:not(:disabled),
     #dudo-button:hover:not(:disabled),
+    #chat-send-button:hover:not(:disabled),
     .icon-button:hover,
     #leave-button:hover:not(:disabled) {
         background: initial;

@@ -11,6 +11,8 @@ Turn-based multiplayer browser dice prototype (Perudo-style foundation) with a N
 ## Current status
 
 - Local multiplayer flow is working (join room, roll animation, turn advancement).
+- Chat is room-scoped with abuse controls (rate limits, duplicate suppression, blocked terms, temporary mute).
+- Join flow supports Guest or Account sign-in (username/password).
 - Frontend is deployed via Azure Static Web Apps GitHub Action.
 - Backend target is Azure Web App (`dicegame-backend-brgpdrdyh8b9fka2`).
 
@@ -39,6 +41,44 @@ Expected response body:
 
 ```json
 {"ok":true}
+```
+
+When no Cosmos settings are configured, auth runs with in-memory provider by default (for local development/testing).
+
+## Account auth (Cosmos DB)
+
+Backend now supports:
+
+- `POST /api/auth/login` with `{ username, password }`
+- `POST /api/auth/register` (admin-key protected) with `{ username, displayName, password }`
+
+Required Web App settings for Cosmos-backed accounts:
+
+- `COSMOS_DB_ENDPOINT` (Cosmos account URI)
+- `COSMOS_DB_KEY` (primary/secondary key)
+- `COSMOS_DB_NAME` (recommended: `dicegame`)
+- `COSMOS_USERS_CONTAINER` (recommended: `users`)
+- `AUTH_TOKEN_SECRET` (long random secret for token signing)
+
+Optional settings:
+
+- `AUTH_ADMIN_KEY` (enables protected account creation endpoint)
+- `AUTH_TOKEN_TTL_SECONDS` (default: 14 days)
+- `CHAT_BLOCKED_TERMS` (comma-separated blocked terms)
+- `CHAT_MAX_MESSAGES_PER_WINDOW` (default: `5`)
+- `CHAT_RATE_WINDOW_MS` (default: `10000`)
+- `CHAT_MUTE_MS` (default: `30000`)
+- `CHAT_DUPLICATE_WINDOW_MS` (default: `6000`)
+
+For local in-memory auth testing:
+
+- `AUTH_PROVIDER=memory`
+- `AUTH_MEMORY_USERS` as JSON array, example:
+
+```json
+[
+	{ "username": "alice", "displayName": "Alice", "password": "Password123!" }
+]
 ```
 
 ## Restart vs Refresh (localhost)
@@ -99,12 +139,17 @@ Frontend deploy is already wired through:
 - `.github/workflows/azure-static-web-apps-icy-hill-04922421e.yml`
 
 Push to `main` to trigger deployment.
+You can also run it manually with **Run workflow** (workflow_dispatch).
 
 ### 2) Backend (Azure Web App)
 
 Backend can be deployed automatically via:
 
 - `.github/workflows/azure-webapp-backend.yml`
+
+Target Azure Web App in workflow:
+
+- `dicegame-backend-brgpdrdyh8b9fka2`
 
 Deployment gate:
 
@@ -221,5 +266,4 @@ Confirm the Join screen appears.
 ## Known MVP constraints
 
 - In-memory room state only (resets on backend restart)
-- No auth/session recovery
 - Minimal gameplay loop (turn-based 5-dice roll)
