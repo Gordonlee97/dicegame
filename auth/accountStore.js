@@ -36,6 +36,10 @@ class InMemoryAccountStore {
                 displayName,
                 passwordHash,
                 disabled: Boolean(user.disabled),
+                wins: Number(user.wins) || 0,
+                losses: Number(user.losses) || 0,
+                gamesPlayed: Number(user.gamesPlayed) || ((Number(user.wins) || 0) + (Number(user.losses) || 0)),
+                updatedAt: user.updatedAt || new Date().toISOString(),
                 createdAt: user.createdAt || new Date().toISOString()
             });
         }
@@ -70,6 +74,10 @@ class InMemoryAccountStore {
             displayName: sanitizeDisplayName(displayName || normalizedUsername),
             passwordHash,
             disabled: false,
+            wins: 0,
+            losses: 0,
+            gamesPlayed: 0,
+            updatedAt: new Date().toISOString(),
             createdAt: new Date().toISOString()
         };
 
@@ -114,6 +122,10 @@ class CosmosAccountStore {
                 displayName: resource.displayName,
                 passwordHash: resource.passwordHash,
                 disabled: Boolean(resource.disabled),
+                wins: Number(resource.wins) || 0,
+                losses: Number(resource.losses) || 0,
+                gamesPlayed: Number(resource.gamesPlayed) || ((Number(resource.wins) || 0) + (Number(resource.losses) || 0)),
+                updatedAt: resource.updatedAt,
                 createdAt: resource.createdAt
             };
         } catch (error) {
@@ -141,6 +153,10 @@ class CosmosAccountStore {
             displayName: sanitizeDisplayName(displayName || normalizedUsername),
             passwordHash,
             disabled: false,
+            wins: 0,
+            losses: 0,
+            gamesPlayed: 0,
+            updatedAt: new Date().toISOString(),
             createdAt: new Date().toISOString()
         };
 

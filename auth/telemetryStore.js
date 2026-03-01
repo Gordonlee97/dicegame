@@ -88,10 +88,10 @@ class CosmosTelemetryStore {
         this.databaseName = options.databaseName;
         this.chatContainerName = options.chatContainerName;
         this.matchContainerName = options.matchContainerName;
-        this.userStatsContainerName = options.userStatsContainerName;
+        this.userContainerName = options.userContainerName;
         this.chatContainer = null;
         this.matchContainer = null;
-        this.userStatsContainer = null;
+        this.userContainer = null;
     }
 
     async initialize() {
@@ -107,14 +107,14 @@ class CosmosTelemetryStore {
             partitionKey: '/roomId'
         });
 
-        const userStatsResult = await database.containers.createIfNotExists({
-            id: this.userStatsContainerName,
+        const userResult = await database.containers.createIfNotExists({
+            id: this.userContainerName,
             partitionKey: '/id'
         });
 
         this.chatContainer = chatResult.container;
         this.matchContainer = matchResult.container;
-        this.userStatsContainer = userStatsResult.container;
+        this.userContainer = userResult.container;
     }
 
     async recordChatMessage(entry) {
@@ -160,7 +160,7 @@ class CosmosTelemetryStore {
     }
 
     async incrementUserRecord(record) {
-        if (!this.userStatsContainer) {
+        if (!this.userContainer) {
             return;
         }
 
@@ -173,7 +173,7 @@ class CosmosTelemetryStore {
         let current;
 
         try {
-            const { resource } = await this.userStatsContainer.item(id, id).read();
+            const { resource } = await this.userContainer.item(id, id).read();
             current = resource || null;
         } catch (error) {
             if (!error || Number(error.code) !== 404) {
@@ -188,8 +188,8 @@ class CosmosTelemetryStore {
         const nextLosses = record.isWin ? losses : losses + 1;
 
         const document = {
+            ...(current || {}),
             id,
-            type: 'user_stats',
             username: normalizedUsername,
             displayName: sanitizeDisplayName(record.displayName || current?.displayName || normalizedUsername),
             userId: String(record.userId || current?.userId || ''),
@@ -200,7 +200,7 @@ class CosmosTelemetryStore {
             createdAt: current?.createdAt || new Date().toISOString()
         };
 
-        await this.userStatsContainer.items.upsert(document);
+        await this.userContainer.items.upsert(document);
     }
 }
 
@@ -218,7 +218,7 @@ async function createTelemetryStoreFromEnv() {
     const databaseName = String(process.env.COSMOS_DB_NAME || 'dicegame').trim();
     const chatContainerName = String(process.env.COSMOS_CHAT_LOGS_CONTAINER || 'chatLogs').trim();
     const matchContainerName = String(process.env.COSMOS_MATCH_HISTORY_CONTAINER || 'matchHistory').trim();
-    const userStatsContainerName = String(process.env.COSMOS_USER_STATS_CONTAINER || 'userStats').trim();
+    const userContainerName = String(process.env.COSMOS_USERS_CONTAINER || 'users').trim();
 
     if (!endpoint || !key) {
         const store = new InMemoryTelemetryStore();
@@ -232,7 +232,7 @@ async function createTelemetryStoreFromEnv() {
         databaseName,
         chatContainerName,
         matchContainerName,
-        userStatsContainerName
+        userContainerName
     });
 
     await store.initialize();

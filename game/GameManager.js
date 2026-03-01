@@ -517,6 +517,10 @@ class GameManager {
             return;
         }
 
+        if (game.round.phase === 'game_over') {
+            this.finalizeMatchIfNeeded(game, 'leave');
+        }
+
         const leavingPlayer = game.findPlayerBySocket(ws);
         if (leavingPlayer) {
             this.chatSafetyByPlayerId.delete(leavingPlayer.id);
@@ -722,6 +726,8 @@ class GameManager {
             accountUserId: context.player.accountUserId || null,
             accountUsername: context.player.accountUsername || null
         };
+
+        this.finalizeMatchIfNeeded(sourceGame, 'rematch');
 
         this.appendMatchAction(context.game, 'rematch', context.player, {
             sourceRoomId,
