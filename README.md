@@ -13,6 +13,7 @@ Turn-based multiplayer browser dice prototype (Perudo-style foundation) with a N
 - Local multiplayer flow is working (join room, roll animation, turn advancement).
 - Chat is room-scoped with abuse controls (rate limits, duplicate suppression, blocked terms, temporary mute).
 - Join flow supports Guest or Account sign-in (username/password).
+- Cosmos persistence now stores chat logs, completed match history (with action timeline), and per-account win/loss stats.
 - Frontend is deployed via Azure Static Web Apps GitHub Action.
 - Backend target is Azure Web App (`dicegame-backend-brgpdrdyh8b9fka2`).
 
@@ -69,6 +70,13 @@ Optional settings:
 - `CHAT_RATE_WINDOW_MS` (default: `10000`)
 - `CHAT_MUTE_MS` (default: `30000`)
 - `CHAT_DUPLICATE_WINDOW_MS` (default: `6000`)
+
+Telemetry persistence settings:
+
+- `TELEMETRY_PROVIDER` (`cosmos` or `memory`; default auto-detect)
+- `COSMOS_CHAT_LOGS_CONTAINER` (default: `chatLogs`)
+- `COSMOS_MATCH_HISTORY_CONTAINER` (default: `matchHistory`)
+- `COSMOS_USER_STATS_CONTAINER` (default: `userStats`)
 
 For local in-memory auth testing:
 

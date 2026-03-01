@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const GameManager = require('./game/GameManager');
 const AuthService = require('./auth/authService');
 const { createAccountStoreFromEnv } = require('./auth/accountStore');
+const { createTelemetryStoreFromEnv } = require('./auth/telemetryStore');
 
 const port = Number(process.env.PORT) || 8080;
 const host = '0.0.0.0';
@@ -139,6 +140,7 @@ function serveFile(req, res) {
 
 async function startServer() {
     const accountStoreResult = await createAccountStoreFromEnv();
+    const telemetryStoreResult = await createTelemetryStoreFromEnv();
     const authTokenSecret = String(process.env.AUTH_TOKEN_SECRET || 'dev-only-change-me').trim();
     const authService = new AuthService({
         accountStore: accountStoreResult.store,
@@ -153,6 +155,7 @@ async function startServer() {
         startingDicePerPlayer,
         rollDice,
         authService,
+        telemetryStore: telemetryStoreResult.store,
         chatSafety: {
             maxMessagesPerWindow: Number(process.env.CHAT_MAX_MESSAGES_PER_WINDOW) || undefined,
             windowMs: Number(process.env.CHAT_RATE_WINDOW_MS) || undefined,
@@ -201,7 +204,8 @@ async function startServer() {
         if (req.url === '/health') {
             writeJson(res, 200, {
                 ok: true,
-                authProvider: accountStoreResult.provider
+                authProvider: accountStoreResult.provider,
+                telemetryProvider: telemetryStoreResult.provider
             });
             return;
         }
@@ -350,6 +354,7 @@ async function startServer() {
     server.listen(port, host, () => {
         console.log(`Server running on http://localhost:${port}`);
         console.log(`Auth provider: ${accountStoreResult.provider}`);
+        console.log(`Telemetry provider: ${telemetryStoreResult.provider}`);
     });
 }
 

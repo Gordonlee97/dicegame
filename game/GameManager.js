@@ -70,8 +70,11 @@ class GameManager {
         this.roomChatHistory = new Map();
         this.clientToRoom = new Map();
         this.chatSafetyByPlayerId = new Map();
+        this.matchSessions = new Map();
+        this.completedMatchRooms = new Set();
         this.send = options.send;
         this.authService = options.authService || null;
+        this.telemetryStore = options.telemetryStore || null;
         this.chatSafety = {
             maxMessagesPerWindow: Number(options.chatSafety?.maxMessagesPerWindow) > 0 ? Number(options.chatSafety.maxMessagesPerWindow) : 5,
             windowMs: Number(options.chatSafety?.windowMs) > 0 ? Number(options.chatSafety.windowMs) : 10000,
@@ -85,6 +88,174 @@ class GameManager {
             startingDicePerPlayer: options.startingDicePerPlayer,
             rollDice: options.rollDice
         };
+    }
+
+    persistTelemetry(task) {
+        if (!this.telemetryStore || typeof task !== 'function') {
+            return;
+        }
+
+        Promise.resolve()
+            .then(task)
+            .catch(error => {
+                console.warn('Telemetry persistence failed:', error && error.message ? error.message : error);
+            });
+    }
+
+    getOrCreateMatchSession(game) {
+        const roomId = game.roomId;
+        if (!this.matchSessions.has(roomId)) {
+            this.matchSessions.set(roomId, {
+                id: `${roomId}-${Date.now()}-${crypto.randomUUID()}`,
+                roomId,
+                createdAt: Date.now(),
+                startedAt: null,
+                completedAt: null,
+                participants: new Map(),
+                actions: []
+            });
+        }
+
+        return this.matchSessions.get(roomId);
+    }
+
+    getParticipantKey(player) {
+        if (player.authType === 'account' && player.accountUsername) {
+            return `account:${String(player.accountUsername).toLowerCase()}`;
+        }
+
+        return `guest:${player.id}`;
+    }
+
+    ensureParticipant(session, player) {
+        const key = this.getParticipantKey(player);
+        const existing = session.participants.get(key) || {
+            playerId: player.id,
+            playerName: player.name,
+            authType: player.authType || 'guest',
+            accountUserId: player.accountUserId || null,
+            accountUsername: player.accountUsername || null,
+            joinedAt: Date.now(),
+            leftAt: null
+        };
+
+        existing.playerId = player.id;
+        existing.playerName = player.name;
+        existing.authType = player.authType || existing.authType || 'guest';
+        existing.accountUserId = player.accountUserId || existing.accountUserId || null;
+        existing.accountUsername = player.accountUsername || existing.accountUsername || null;
+
+        session.participants.set(key, existing);
+        return existing;
+    }
+
+    markParticipantLeft(session, player) {
+        const key = this.getParticipantKey(player);
+        const participant = session.participants.get(key);
+        if (!participant) {
+            return;
+        }
+
+        participant.leftAt = Date.now();
+        session.participants.set(key, participant);
+    }
+
+    appendMatchAction(game, actionType, actor, payload = {}) {
+        const session = this.getOrCreateMatchSession(game);
+        if (actionType === 'start_game' && !session.startedAt) {
+            session.startedAt = Date.now();
+        }
+
+        if (actor) {
+            this.ensureParticipant(session, actor);
+        }
+
+        session.actions.push({
+            index: session.actions.length + 1,
+            type: actionType,
+            at: Date.now(),
+            actor: actor
+                ? {
+                      playerId: actor.id,
+                      playerName: actor.name,
+                      authType: actor.authType || 'guest',
+                      accountUserId: actor.accountUserId || null,
+                      accountUsername: actor.accountUsername || null
+                  }
+                : null,
+            payload
+        });
+    }
+
+    buildMatchDocument(game, trigger) {
+        const session = this.getOrCreateMatchSession(game);
+        session.completedAt = Date.now();
+
+        for (const player of game.players) {
+            this.ensureParticipant(session, player);
+        }
+
+        const winner = game.findPlayerById(game.round.winnerPlayerId);
+        const participants = Array.from(session.participants.values()).map(item => ({ ...item }));
+
+        return {
+            id: session.id,
+            roomId: session.roomId,
+            status: 'completed',
+            trigger,
+            createdAt: new Date(session.createdAt).toISOString(),
+            startedAt: session.startedAt ? new Date(session.startedAt).toISOString() : null,
+            completedAt: new Date(session.completedAt).toISOString(),
+            roundNumber: game.round.roundNumber,
+            winner: winner
+                ? {
+                      playerId: winner.id,
+                      playerName: winner.name,
+                      authType: winner.authType || 'guest',
+                      accountUserId: winner.accountUserId || null,
+                      accountUsername: winner.accountUsername || null
+                  }
+                : null,
+            participants,
+            actions: session.actions.map(action => ({ ...action })),
+            finalActionLog: [...game.actionLog],
+            finalResolution: game.round.lastResolution || null
+        };
+    }
+
+    finalizeMatchIfNeeded(game, trigger) {
+        if (!game || game.round.phase !== 'game_over') {
+            return;
+        }
+
+        const roomId = game.roomId;
+        if (this.completedMatchRooms.has(roomId)) {
+            return;
+        }
+
+        this.completedMatchRooms.add(roomId);
+        const document = this.buildMatchDocument(game, trigger);
+        this.persistTelemetry(() => this.telemetryStore.upsertMatchHistory(document));
+
+        const winnerUsername = document.winner && document.winner.accountUsername
+            ? String(document.winner.accountUsername).toLowerCase()
+            : '';
+
+        for (const participant of document.participants) {
+            if (participant.authType !== 'account' || !participant.accountUsername) {
+                continue;
+            }
+
+            const participantUsername = String(participant.accountUsername).toLowerCase();
+            const isWin = Boolean(winnerUsername) && participantUsername === winnerUsername;
+
+            this.persistTelemetry(() => this.telemetryStore.incrementUserRecord({
+                username: participant.accountUsername,
+                userId: participant.accountUserId,
+                displayName: participant.playerName,
+                isWin
+            }));
+        }
     }
 
     getOrCreateGame(roomId) {
@@ -141,6 +312,13 @@ class GameManager {
             this.send(ws, { type: 'error', message: 'Failed to register player in room.' });
             return false;
         }
+
+        const targetSession = this.getOrCreateMatchSession(game);
+        this.ensureParticipant(targetSession, joinedPlayer);
+        this.appendMatchAction(game, 'join', joinedPlayer, {
+            roomId: targetRoomId,
+            source: 'rematch_transfer'
+        });
 
         this.clientToRoom.set(ws, targetRoomId);
         this.send(ws, {
@@ -303,6 +481,12 @@ class GameManager {
             return;
         }
 
+        const session = this.getOrCreateMatchSession(game);
+        this.ensureParticipant(session, joinedPlayer);
+        this.appendMatchAction(game, 'join', joinedPlayer, {
+            roomId
+        });
+
         this.clientToRoom.set(ws, roomId);
 
         this.send(ws, {
@@ -336,16 +520,26 @@ class GameManager {
         const leavingPlayer = game.findPlayerBySocket(ws);
         if (leavingPlayer) {
             this.chatSafetyByPlayerId.delete(leavingPlayer.id);
+            const session = this.getOrCreateMatchSession(game);
+            this.ensureParticipant(session, leavingPlayer);
+            this.markParticipantLeft(session, leavingPlayer);
+            this.appendMatchAction(game, 'leave', leavingPlayer, {
+                roomId
+            });
         }
 
         game.removePlayerBySocket(ws);
 
         if (game.players.length === 0) {
+            this.finalizeMatchIfNeeded(game, 'room_empty');
             this.roomChatHistory.delete(roomId);
             this.games.delete(roomId);
+            this.matchSessions.delete(roomId);
+            this.completedMatchRooms.delete(roomId);
             return;
         }
 
+        this.finalizeMatchIfNeeded(game, 'leave');
         this.broadcastState(game);
     }
 
@@ -389,6 +583,11 @@ class GameManager {
             return;
         }
 
+        this.appendMatchAction(context.game, 'bid', context.player, {
+            quantity: bid.quantity,
+            face: bid.face
+        });
+
         this.broadcastState(context.game);
     }
 
@@ -404,7 +603,12 @@ class GameManager {
             return;
         }
 
+        this.appendMatchAction(context.game, 'dudo', context.player, {
+            resolution: context.game.round.lastResolution || null
+        });
+
         this.broadcastState(context.game);
+        this.finalizeMatchIfNeeded(context.game, 'dudo');
     }
 
     handleCalza(ws) {
@@ -419,7 +623,12 @@ class GameManager {
             return;
         }
 
+        this.appendMatchAction(context.game, 'calza', context.player, {
+            resolution: context.game.round.lastResolution || null
+        });
+
         this.broadcastState(context.game);
+        this.finalizeMatchIfNeeded(context.game, 'calza');
     }
 
     handleStartGame(ws) {
@@ -437,6 +646,10 @@ class GameManager {
             this.send(ws, { type: 'error', message: result.error });
             return;
         }
+
+        this.appendMatchAction(context.game, 'start_game', context.player, {
+            roundNumber: context.game.round.roundNumber
+        });
 
         this.broadcastState(context.game);
     }
@@ -469,6 +682,19 @@ class GameManager {
         };
 
         this.appendRoomChatMessage(context.game.roomId, chatEvent);
+        this.appendMatchAction(context.game, 'chat_message', context.player, {
+            message: chatEvent.message,
+            sentAt: chatEvent.sentAt
+        });
+        this.persistTelemetry(() => this.telemetryStore.recordChatMessage({
+            id: `${context.game.roomId}:${chatEvent.sentAt}:${context.player.id}`,
+            roomId: context.game.roomId,
+            playerId: context.player.id,
+            playerName: context.player.name,
+            accountUsername: context.player.accountUsername || '',
+            message: chatEvent.message,
+            sentAt: chatEvent.sentAt
+        }));
         this.broadcastToRoom(context.game, chatEvent);
     }
 
@@ -497,14 +723,23 @@ class GameManager {
             accountUsername: context.player.accountUsername || null
         };
 
+        this.appendMatchAction(context.game, 'rematch', context.player, {
+            sourceRoomId,
+            targetRoomId
+        });
+
         this.chatSafetyByPlayerId.delete(context.player.id);
 
         this.clientToRoom.delete(ws);
         sourceGame.removePlayerBySocket(ws);
 
         if (sourceGame.players.length === 0) {
+            this.finalizeMatchIfNeeded(sourceGame, 'rematch_room_empty');
             this.games.delete(sourceRoomId);
+            this.matchSessions.delete(sourceRoomId);
+            this.completedMatchRooms.delete(sourceRoomId);
         } else {
+            this.finalizeMatchIfNeeded(sourceGame, 'rematch');
             this.broadcastState(sourceGame);
         }
 

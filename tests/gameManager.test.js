@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const GameManager = require('../game/GameManager');
 
-function createManager(messageSink) {
+function createManager(messageSink, overrides = {}) {
     return new GameManager({
         send: (ws, payload) => {
             messageSink.push({ ws, payload });
@@ -11,7 +11,8 @@ function createManager(messageSink) {
         minPlayersToStart: 2,
         maxPlayersPerRoom: 6,
         startingDicePerPlayer: 5,
-        rollDice: count => Array.from({ length: count }, () => 2)
+        rollDice: count => Array.from({ length: count }, () => 2),
+        ...overrides
     });
 }
 
@@ -146,4 +147,75 @@ test('chat message is broadcast only to players in same room and included in his
     assert.ok(historyMessage);
     assert.equal(Array.isArray(historyMessage.payload.messages), true);
     assert.equal(historyMessage.payload.messages.some(item => item.message === 'hello room a'), true);
+});
+
+test('telemetry store records chat, match history, and account win/loss', async () => {
+    const sent = [];
+    const telemetryCalls = {
+        chats: [],
+        matches: [],
+        stats: []
+    };
+
+    const telemetryStore = {
+        async recordChatMessage(entry) {
+            telemetryCalls.chats.push(entry);
+        },
+        async upsertMatchHistory(match) {
+            telemetryCalls.matches.push(match);
+        },
+        async incrementUserRecord(record) {
+            telemetryCalls.stats.push(record);
+        }
+    };
+
+    const manager = createManager(sent, { telemetryStore });
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+
+    manager.join(wsAlice, {
+        type: 'join',
+        roomId: 'telemetry-room',
+        name: 'Alice',
+        authToken: '',
+        authType: 'account'
+    });
+    manager.join(wsBob, {
+        type: 'join',
+        roomId: 'telemetry-room',
+        name: 'Bob',
+        authToken: '',
+        authType: 'account'
+    });
+
+    const game = manager.games.get('telemetry-room');
+    game.players[0].authType = 'account';
+    game.players[0].accountUsername = 'alice';
+    game.players[0].accountUserId = 'alice';
+    game.players[1].authType = 'account';
+    game.players[1].accountUsername = 'bob';
+    game.players[1].accountUserId = 'bob';
+
+    manager.handleChatMessage(wsAlice, { type: 'chat_message', message: 'hello telemetry' });
+    manager.handleStartGame(wsAlice);
+    game.round.setGameOver(game.players[0].id);
+    manager.handleRematch(wsAlice);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.equal(telemetryCalls.chats.length >= 1, true);
+    assert.equal(telemetryCalls.chats.some(item => item.message === 'hello telemetry'), true);
+
+    assert.equal(telemetryCalls.matches.length >= 1, true);
+    const latestMatch = telemetryCalls.matches[telemetryCalls.matches.length - 1];
+    assert.equal(latestMatch.status, 'completed');
+    assert.equal(Array.isArray(latestMatch.actions), true);
+    assert.equal(latestMatch.actions.some(action => action.type === 'chat_message'), true);
+
+    assert.equal(telemetryCalls.stats.length >= 2, true);
+    const accountStats = telemetryCalls.stats.filter(item => item.username === 'alice' || item.username === 'bob');
+    assert.equal(accountStats.length >= 2, true);
+    assert.equal(accountStats.some(item => item.isWin === true), true);
+    assert.equal(accountStats.some(item => item.isWin === false), true);
 });
