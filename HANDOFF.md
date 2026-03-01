@@ -1,191 +1,248 @@
-# Dicegame Project Handoff
+# Dicegame Project Handoff (Current Thread Continuity)
 
-## 1) Current objective and status
+This document supersedes the legacy MVP handoff. It captures what was implemented from the current thread takeover through now, plus how to continue safely in the next chat.
 
-Goal reached so far:
-- Multiplayer browser dice prototype is working locally with server-authoritative turn-based rolling.
-- Local smoke tests passed for:
-  - room join by multiple players,
-  - roll start and roll end broadcast,
-  - valid 5-dice payload values,
-  - turn advancement after roll.
+---
 
-Current stage:
-- Ready for deployment of backend and frontend to Azure.
-- Game logic is intentionally minimal for now: players join room and take turns rolling 5 dice.
+## 1) Current state at handoff
 
-## 2) Local repository and folder status
+Repository:
+- `C:/Users/gordo/source/repos/dicegame`
 
-Current working folder in this chat:
-- C:/Users/gordo/source/repos/Copilot Testing
+Current branch:
+- `feature/lobby-chat`
 
-Target GitHub repo:
-- https://github.com/Gordonlee97/dicegame
+Current product state:
+- Perudo gameplay is significantly evolved beyond MVP.
+- Game has pre-game waiting room, manual start flow, randomized start order, enhanced reveal modals, event toasts/audio cues, and richer dice animations.
 
-Git status actions already completed:
-- Remote origin configured to dicegame repo.
-- Initial project commit pushed to origin/main successfully.
-- .gitignore added and updated to exclude node_modules and .NET build artifacts.
+Validation status (latest run):
+- `npm test` passing: **14/14**
+- script/game/server syntax checks pass (`node --check ...`)
 
-Additional local clone created for consistent naming:
-- C:/Users/gordo/source/repos/dicegame
-- This clone tracks origin/main and is clean.
+Local runtime preference (explicit user request):
+- Automatically restart local server after backend-affecting changes and verify `/health`.
 
-Recommendation:
-- Continue development in C:/Users/gordo/source/repos/dicegame.
+---
 
-## 3) Azure resources and endpoints in use
+## 2) Major features implemented in this thread
 
-Frontend host:
-- Static Web App URL: https://icy-hill-04922421e.6.azurestaticapps.net
+### A) Pre-game lobby flow (manual start)
 
-Backend host:
-- Web App URL: https://dicegame-backend-brgpdrdyh8b9fka2.westus3-01.azurewebsites.net
+Previous behavior:
+- Game auto-started once minimum players joined.
 
-CORS requirement:
-- Static Web App origin must be present in Allowed Origins for backend Web App CORS.
-- User confirmed this was already done.
+Current behavior:
+- Room remains in waiting state until someone clicks **Start Game**.
+- Any current room member can trigger start.
+- Start button appears only in initial waiting phase and hides once game starts.
 
-Region note:
-- Static Web App and Web App are in different regions.
-- This is acceptable for now and expected to add some latency.
+Files:
+- `game/PerudoGame.js`
+- `game/GameManager.js`
+- `server.js`
+- `index.html`
+- `script.js`
+- `styles.css`
+- tests updated in `tests/*`
 
-## 4) Files that implement the current app
+Key details:
+- Added websocket message type `start_game`.
+- Disabled auto-start on initial join by gating `beginGameIfReady()` when `roundNumber === 0`.
 
-Core frontend:
-- index.html
-- styles.css
-- script.js
-- config.js
+### B) Randomized turn order on game start
 
-Core backend:
-- server.js
-- package.json
-- package-lock.json
+Current behavior:
+- On `start_game`, server shuffles player array before starting round 1.
+- Join order no longer dictates initial turn order.
 
-Other files present:
-- .gitignore
-- Existing C# sample project files (not part of dice gameplay runtime)
+File:
+- `game/GameManager.js` (secure random Fisher-Yates via `crypto.randomInt`)
 
-## 5) Runtime behavior implemented
+### C) Reveal sequencing and modal gating
 
-### Join and screens
-- Separate join screen and game screen implemented.
-- Join screen collects name and room id.
-- On successful join, join screen hides and game screen shows.
-- Leave button disconnects and returns to join screen.
+Current behavior:
+- **Both Dudo and Calza** reveals now gate next-round visuals.
+- Next-round dice values + roll animation are deferred until reveal modal closes.
+- Round-start and turn cues align with reveal-close flow.
 
-### Players and turn UI
-- Player list shown in a left sidebar.
-- Active turn indicated by a visible dot and highlighted player row.
-- Self player annotated as (you).
+File:
+- `script.js` (state deferral in `applyStateUpdate`, deferred apply in `closeResolutionModal`)
 
-### Dice and rolling
-- Dice render as pips using DOM elements and CSS, no numeric text.
-- 5 dice displayed.
-- Server controls roll sequence and final values.
-- Roll animation visible through server roll_tick updates.
+### D) Reveal UX/visual clarity improvements
 
-### Turn enforcement
-- Roll only enabled when:
-  - connected,
-  - not currently rolling,
-  - at least 2 players in room,
-  - it is local player turn.
+Changes:
+- Dudo reveal now includes caller line (parallel to Calza reveal).
+- Reworded lines for better readability (e.g., “Bid challenged...”, “Matching dice found...”).
+- Styled reveal blocks with consistent spacing, hierarchy, and alignment.
 
-### Connection routing logic
-- Localhost behavior:
-  - script.js forces same-origin websocket on localhost for local testing.
-- Deployed behavior:
-  - script.js uses API_BASE_URL from config.js to connect to backend ws endpoint.
+Files:
+- `script.js`
+- `styles.css`
 
-## 6) Important configuration already set
+### E) Audio system enhancements
 
-config.js currently points to Azure backend:
-- API_BASE_URL = https://dicegame-backend-brgpdrdyh8b9fka2.westus3-01.azurewebsites.net
+Changes:
+- Separate Dudo success/fail cues:
+  - success = achievement-like cue,
+  - fail = descending fail cue.
+- Calza now uses same success/fail sound mapping as Dudo.
+- Dice roll animation uses provided WAV: `extras/Sound Effects/dice roll sound.wav`.
+- Added `.wav` mime type and URL decode fix on static serving path.
 
-This means:
-- Local testing on localhost still works because script.js now auto-prefers localhost ws when hostname is localhost.
-- Static Web App deployment uses Azure backend URL from config.js.
+Files:
+- `script.js`
+- `server.js`
 
-## 7) Local test commands that already passed
+### F) Waiting room UI clarity
 
-Environment checks:
-- node -v
-- npm -v
+Changes:
+- Added persistent waiting notice in game screen for pre-game state.
+- Removed redundant status messaging by simplifying top banner during waiting room.
 
-Install:
-- npm install
+Files:
+- `index.html`
+- `styles.css`
+- `script.js`
 
-Health endpoint:
-- Invoke-WebRequest http://localhost:8080/health
-- Returned: {"ok":true}
+### G) Dice animation iterations
 
-Automated websocket smoke test:
-- Two simulated players joined same room.
-- Roll sequence and turn advancement validated.
+Status:
+- Dice throw animation has been repeatedly tuned for smoother, more physical look.
+- Current path supports thrown-in motion and avoids clipping issues introduced earlier.
 
-## 8) What must be deployed now
+Files:
+- `styles.css`
+- `script.js`
 
-Deploy both applications:
+Note:
+- Animation feel was iterated many times based on user feedback; expect more tuning during chat feature work if desired.
 
-1) Backend to Azure Web App
-- Deploy server.js, package.json, package-lock.json and related backend runtime files.
-- WebSocket endpoint path used by client: /ws
+---
 
-2) Frontend to Azure Static Web App
-- Deploy index.html, styles.css, script.js, config.js
+## 3) Deployment/runtime notes
 
-No additional service is required for current minimal version.
+Azure endpoints:
+- Frontend (Static Web App): `https://icy-hill-04922421e.6.azurestaticapps.net`
+- Backend (Web App): `https://dicegame-backend-brgpdrdyh8b9fka2.westus3-01.azurewebsites.net`
 
-## 9) Post-deploy verification checklist
+Backend static path fix implemented:
+- `decodeURIComponent(req.url)` now used in `server.js` before normalization.
+- This was required to serve assets with spaces in path (e.g., WAV file).
 
-After deployment, verify in browser:
-1. Open Static Web App URL in two tabs.
-2. Join same room with two distinct names.
-3. Confirm both players appear in sidebar.
-4. Confirm turn indicator dot highlights active player.
-5. Roll as active player only.
-6. Confirm both tabs see live dice rolling updates.
-7. Confirm turn advances to the other player after each roll.
-8. Test Leave button returns player to join screen.
+When restart is needed:
+- Backend edits (`server.js`, `game/*`) require restart/redeploy.
+- Frontend-only edits (`index.html`, `styles.css`, `script.js`) require hard refresh locally/deploy refresh in prod.
 
-## 10) Known constraints and intentional simplifications
+User preference established:
+- Agent should automatically restart local backend when backend-affecting changes are made.
 
-Current implementation is MVP-level and intentionally simple:
-- No persistent storage yet.
-- In-memory room/player state only (resets on backend restart).
-- No authentication.
-- No reconnect/session recovery.
-- No advanced anti-cheat beyond server-authoritative roll flow.
+---
 
-## 11) Recommended next engineering steps
+## 4) File-level impact summary (high-signal)
 
-Priority order:
-1. Deploy backend and frontend and run full online smoke test.
-2. Add basic deploy automation from GitHub (both apps).
-3. Add room lifecycle safeguards (timeouts, cleanup).
-4. Add basic match state model and score tracking.
-5. Add persistence for matches and player profiles.
-6. Add auth and identity once gameplay loop is stable.
+Backend/game logic:
+- `game/PerudoGame.js`
+  - added manual start method
+  - initial auto-start disabled
+- `game/GameManager.js`
+  - added `handleStartGame`
+  - added start-time random order shuffle
+- `server.js`
+  - added `start_game` websocket route
+  - added url decode + `.wav` mime support
 
-## 12) Quick troubleshooting notes
+Frontend behavior/UI:
+- `script.js`
+  - start-game button wiring and waiting room state logic
+  - reveal deferral sequencing for both Dudo/Calza
+  - popup timing/animation/audio tuning
+  - Dudo + Calza success/fail audio mapping
+  - reveal modal text hierarchy and caller line improvements
+- `index.html`
+  - added start-game button
+  - added persistent waiting notice
+  - room-code labels updated
+- `styles.css`
+  - reveal modal styling overhaul
+  - waiting notice styling
+  - toast/animation tuning
+  - dice animation revisions
 
-If Join hangs or disconnects immediately:
-- Check backend Web App is running.
-- Check backend CORS allows Static Web App origin.
-- Check browser console websocket errors.
-- Confirm config.js API_BASE_URL matches backend HTTPS URL.
-- Confirm backend exposes websocket path /ws.
+Tests:
+- `tests/perudoGame.test.js`
+- `tests/websocket.integration.test.js`
+- `tests/gameManager.test.js`
 
-If local works but deployed fails:
-- Reconfirm config.js is included in Static Web App deployment output.
-- Verify deployed script.js has localhost override plus API_BASE_URL logic.
-- Verify no stale browser cache (hard refresh).
+All updated to reflect manual start and related behavior.
 
-## 13) Safe handoff summary
+---
 
-You can switch work to this folder now:
-- C:/Users/gordo/source/repos/dicegame
+## 5) Testing and verification practice used
 
-You can continue from this exact state without losing technical context by using this handoff file.
+Common commands used in this thread:
+- `node --check .\script.js`
+- `node --check .\server.js`
+- `node --check .\game\PerudoGame.js`
+- `node --check .\game\GameManager.js`
+- `npm test`
+
+Current expected result:
+- `npm test` => **14 passing, 0 failing**
+
+---
+
+## 6) Working style / engineering philosophy for next chat
+
+Established preferences and approach:
+- Implement end-to-end, not just propose.
+- Keep changes focused and surgical to requested behavior.
+- Validate immediately with syntax + tests after edits.
+- Maintain server-authoritative gameplay state.
+- For modal/reveal sequencing, preserve deterministic deferred application patterns.
+- Auto-restart backend when backend files change and verify `/health`.
+
+UI/UX direction inferred from user feedback:
+- Prefer clear, non-redundant messaging.
+- Favor strong event sequencing consistency (especially Dudo/Calza to next round).
+- Prioritize readability/hierarchy over raw information density.
+- Keep animation expressive but smooth/non-jarring.
+
+---
+
+## 7) Known context for immediate next feature
+
+User intent:
+- Start building **lobby chat** feature on branch `feature/lobby-chat`.
+
+Implications for next implementation:
+- Likely backend websocket message type(s) for chat send/broadcast.
+- Add room-scoped chat state (in-memory initially, similar to action log model).
+- Add frontend chat panel/input in waiting + gameplay views (depending on UX scope).
+- Keep compatibility with existing event toasts and action log UI.
+- Preserve test coverage style with websocket integration tests.
+
+Suggested first increment:
+1. Add `chat_message` inbound message type.
+2. Broadcast `chat` event payloads to players in same room.
+3. Render capped chat list client-side with player name colors.
+4. Add basic input validation/length limit and test coverage.
+
+---
+
+## 8) Operational caveats
+
+- In this environment, `npm start` sometimes reports non-zero in terminal metadata even when server appears to start; health check is authoritative.
+- Always verify with:
+  - `Invoke-WebRequest http://localhost:8080/health`
+
+---
+
+## 9) Quick continue checklist for next chat
+
+1. Ensure branch is `feature/lobby-chat`.
+2. Pull latest local state if needed.
+3. Run `npm test` baseline.
+4. Implement chat in small slices (backend route -> broadcast -> frontend render -> tests).
+5. If backend changed, restart local server and verify `/health`.
+
