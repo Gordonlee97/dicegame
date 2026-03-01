@@ -15,7 +15,7 @@ Turn-based multiplayer browser dice prototype (Perudo-style foundation) with a N
 - Join flow supports Guest or Account sign-in (username/password).
 - Cosmos persistence now stores chat logs, completed match history (with action timeline), and per-account win/loss stats directly on user documents.
 - Frontend is deployed via Azure Static Web Apps GitHub Action.
-- Backend target is Azure Web App (`dicegame-backend-brgpdrdyh8b9fka2`).
+- Backend target is Azure Web App (`dicegame-backend`).
 
 ## Tech stack
 
@@ -157,7 +157,7 @@ Backend can be deployed automatically via:
 
 Target Azure Web App in workflow:
 
-- `dicegame-backend-brgpdrdyh8b9fka2`
+- `dicegame-backend`
 
 Deployment gate:
 
@@ -170,7 +170,7 @@ One-time setup required in GitHub repository secrets:
 
 How to get it:
 
-1. Azure Portal → Web App `dicegame-backend-brgpdrdyh8b9fka2`
+1. Azure Portal → Web App `dicegame-backend`
 2. Download publish profile
 3. GitHub repo → Settings → Secrets and variables → Actions → New repository secret
 4. Name it exactly `AZURE_WEBAPP_PUBLISH_PROFILE_DICEGAME_BACKEND`
@@ -179,6 +179,7 @@ How to get it:
 One-time app setting in Azure Web App:
 
 - `WEBSITES_PORT=8080`
+- `COSMOS_USERS_CONTAINER=users`
 
 After secret setup, pushes to `main` trigger backend deployment automatically.
 
@@ -188,7 +189,7 @@ Run in PowerShell from repo root:
 
 ```powershell
 az login
-az webapp list --query "[?name=='dicegame-backend-brgpdrdyh8b9fka2'].{name:name,resourceGroup:resourceGroup,location:location}" -o table
+az webapp list --query "[?name=='dicegame-backend'].{name:name,resourceGroup:resourceGroup,location:location}" -o table
 ```
 
 Set your resource group name from the command output:
@@ -200,7 +201,7 @@ $RG = "<your-resource-group>"
 Ensure Node app settings are correct:
 
 ```powershell
-az webapp config appsettings set --name dicegame-backend-brgpdrdyh8b9fka2 --resource-group $RG --settings WEBSITES_PORT=8080 SCM_DO_BUILD_DURING_DEPLOYMENT=true
+az webapp config appsettings set --name dicegame-backend --resource-group $RG --settings WEBSITES_PORT=8080 COSMOS_USERS_CONTAINER=users SCM_DO_BUILD_DURING_DEPLOYMENT=true
 ```
 
 Create a backend deployment zip (only runtime files):
@@ -213,7 +214,7 @@ Compress-Archive -Path .\server.js, .\package.json, .\package-lock.json -Destina
 Deploy backend zip:
 
 ```powershell
-az webapp deploy --name dicegame-backend-brgpdrdyh8b9fka2 --resource-group $RG --src-path .\backend-deploy.zip --type zip
+az webapp deploy --name dicegame-backend --resource-group $RG --src-path .\backend-deploy.zip --type zip
 ```
 
 Quick backend verification:
