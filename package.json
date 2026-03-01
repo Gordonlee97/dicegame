@@ -12,6 +12,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.5.1",
+    "bcryptjs": "^2.4.3",
     "ws": "^8.18.0"
   }
 }

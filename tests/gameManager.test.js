@@ -116,3 +116,34 @@ test('start_game returns error when already started', () => {
     assert.ok(latestError);
     assert.match(latestError.payload.message, /already in progress|Cannot manually start/i);
 });
+
+test('chat message is broadcast only to players in same room and included in history for new joiner', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+    const wsClara = { id: 'ws-clara' };
+    const wsDerek = { id: 'ws-derek' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'chat-room-a' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'chat-room-a' });
+    manager.join(wsClara, { type: 'join', name: 'Clara', roomId: 'chat-room-b' });
+
+    sent.length = 0;
+    manager.handleChatMessage(wsAlice, { type: 'chat_message', message: 'hello room a' });
+
+    const roomChatEvents = sent.filter(entry => entry.payload.type === 'chat');
+    assert.equal(roomChatEvents.length, 2);
+    assert.equal(roomChatEvents.every(entry => entry.payload.roomId === 'chat-room-a'), true);
+    assert.equal(roomChatEvents.some(entry => entry.ws === wsClara), false);
+
+    manager.join(wsDerek, { type: 'join', name: 'Derek', roomId: 'chat-room-a' });
+
+    const historyMessage = sent.findLast(
+        entry => entry.ws === wsDerek && entry.payload.type === 'chat_history'
+    );
+    assert.ok(historyMessage);
+    assert.equal(Array.isArray(historyMessage.payload.messages), true);
+    assert.equal(historyMessage.payload.messages.some(item => item.message === 'hello room a'), true);
+});
