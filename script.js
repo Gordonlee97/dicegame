@@ -4,6 +4,7 @@ const calzaButton = document.getElementById('calza-button');
 const dudoButton = document.getElementById('dudo-button');
 const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
+const endGameButton = document.getElementById('end-game-button');
 const startGameButton = document.getElementById('start-game-button');
 const sidebarRematchButton = document.getElementById('sidebar-rematch-button');
 const authModeGuestButton = document.getElementById('auth-mode-guest');
@@ -21,6 +22,7 @@ const accountPasswordLabel = document.getElementById('account-password-label');
 const accountDisplayNameLabel = document.getElementById('account-display-name-label');
 const accountUsernameInput = document.getElementById('account-username');
 const accountPasswordInput = document.getElementById('account-password');
+const accountPasswordToggleButton = document.getElementById('account-password-toggle');
 const accountDisplayNameInput = document.getElementById('account-display-name');
 const roomIdInput = document.getElementById('room-id');
 const roomIdAccountInput = document.getElementById('room-id-account');
@@ -54,15 +56,17 @@ const victoryMessage = document.getElementById('victory-message');
 const victoryBurst = document.getElementById('victory-burst');
 const rematchButton = document.getElementById('rematch-button');
 const rematchStatus = document.getElementById('rematch-status');
+const roundCard = document.querySelector('.round-card');
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsModal = document.getElementById('settings-modal');
 const settingsOverlay = document.getElementById('settings-modal-overlay');
 const settingsCloseButton = document.getElementById('settings-close-button');
 const settingsPanel = document.getElementById('settings-panel');
 const soundToggle = document.getElementById('sound-toggle');
-const fontScaleSelect = document.getElementById('font-scale');
 const advancedToggle = document.getElementById('advanced-toggle');
 const darkModeToggle = document.getElementById('dark-mode-toggle');
+const profanityToggle = document.getElementById('profanity-toggle');
+const turnTimerToggle = document.getElementById('turn-timer-toggle');
 const rulesPanel = document.getElementById('rules-panel');
 const actionHelper = document.getElementById('action-helper');
 const loadingScreen = document.getElementById('app-loading');
@@ -114,7 +118,7 @@ const state = {
     previousTurnPlayerId: null,
     pendingConfirmAction: null,
     lastSeenWinnerPlayerId: null,
-    pendingVictoryWinnerName: null,
+    pendingVictoryWinner: null,
     pendingRoundToastMessage: null,
     pendingYourTurnToast: false,
     deferDiceRollUntilResolutionClose: false,
@@ -123,19 +127,58 @@ const state = {
     chatMessages: [],
     chatUnreadCount: 0,
     chatOpen: false,
-    playerColorByName: {},
+    playerColorByKey: {},
     nextPlayerColorIndex: 0,
+    turnTimerKey: '',
+    turnTimerStartedAt: 0,
+    turnTimerHasAlerted: false,
     ui: {
         soundEnabled: true,
-        fontScale: 1,
         showAdvanced: false,
-        darkMode: false
+        darkMode: false,
+        filterProfanities: false,
+        turnTimerEnabled: false
     }
 };
 
-const playerNameColorPalette = ['#2563eb', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#0f766e'];
+const playerNameColorPalette = ['#2563eb', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#a16207'];
 const maxActionLogEntries = 120;
 const maxChatMessages = 150;
+const turnTimerDurationMs = 30000;
+const turnTimerTickMs = 120;
+const profanityTerms = [
+    'ass',
+    'asshole',
+    'bastard',
+    'bitch',
+    'bullshit',
+    'crap',
+    'cunt',
+    'damn',
+    'dick',
+    'douche',
+    'freak',
+    'fuck',
+    'fucker',
+    'fucking',
+    'idiot',
+    'imbecile',
+    'jackass',
+    'jerk',
+    'loser',
+    'moron',
+    'motherfucker',
+    'piss',
+    'prick',
+    'retard',
+    'shit',
+    'stupid',
+    'suck',
+    'twat',
+    'wanker',
+    'whore'
+];
+const profanityPattern = new RegExp(`\\b(${profanityTerms.map(escapeRegExp).join('|')})\\b`, 'gi');
 
 const pipPositionsByValue = {
     1: [5],
@@ -153,16 +196,6 @@ function maybeHideLoadingScreen() {
     setTimeout(() => {
         loadingScreen.classList.add('hidden');
     }, 400);
-}
-
-function setFontScale(scaleValue) {
-    const parsed = Number(scaleValue);
-    if (!Number.isFinite(parsed)) {
-        return;
-    }
-
-    state.ui.fontScale = parsed;
-    document.documentElement.style.setProperty('--font-scale', String(parsed));
 }
 
 function setShowAdvanced(enabled) {
@@ -201,6 +234,33 @@ function renderDie(die, value) {
         pip.style.gridArea = `p${position}`;
         die.appendChild(pip);
     }
+}
+
+function censorProfanities(message) {
+    const normalized = String(message || '');
+    if (!state.ui.filterProfanities || !normalized) {
+        return normalized;
+    }
+
+    return normalized.replace(profanityPattern, (match) => {
+        if (match.length <= 2) {
+            return '*'.repeat(match.length);
+        }
+        return `${match[0]}${'*'.repeat(Math.max(1, match.length - 2))}${match[match.length - 1]}`;
+    });
+}
+
+function setPasswordVisibility(visible) {
+    const showPlainText = Boolean(visible);
+    accountPasswordInput.type = showPlainText ? 'text' : 'password';
+
+    if (!accountPasswordToggleButton) {
+        return;
+    }
+
+    accountPasswordToggleButton.classList.toggle('is-visible', showPlainText);
+    accountPasswordToggleButton.setAttribute('aria-pressed', showPlainText ? 'true' : 'false');
+    accountPasswordToggleButton.setAttribute('aria-label', showPlainText ? 'Hide password' : 'Show password');
 }
 
 function playTone(frequency, durationMs, volume = 0.018, type = 'triangle') {
@@ -267,8 +327,96 @@ function playDiceRollCue() {
     }
 }
 
+function animateDieRollPhysics(die, options = {}) {
+    const durationMs = Number(options.durationMs) || 860;
+    const delayMs = Number(options.delayMs) || 0;
+    const clusterX = Number(options.clusterX) || 0;
+    const clusterY = Number(options.clusterY) || 0;
+    const lift = Number(options.lift) || 10;
+    const spinStartDeg = Number(options.spinStartDeg) || -220;
+    const throwDistancePx = Number(options.throwDistancePx) || 170;
+    const bounceStart = Number(options.bounceStart) || 0.68;
+    const bounceAmplitude = Number(options.bounceAmplitude) || 7.4;
+    const bounceDamping = Number(options.bounceDamping) || 6.4;
+    const bounceFrequency = Number(options.bounceFrequency) || 4.1;
+    const settleStart = Number(options.settleStart) || 0.71;
+    const wobbleAmplitudeX = Number(options.wobbleAmplitudeX) || 2.2;
+    const wobbleAmplitudeRot = Number(options.wobbleAmplitudeRot) || 6.3;
+    const wobbleCycles = Number(options.wobbleCycles) || 7.5;
+    const wobbleDecayRate = Number(options.wobbleDecayRate) || 6.1;
+    const rollBiasDeg = Number(options.rollBiasDeg) || 0;
+    const arcSkew = Number(options.arcSkew) || 0;
+
+    const startX = -throwDistancePx + clusterX;
+    const startY = -8 + clusterY;
+
+    const existingAnimationId = Number(die.dataset.rollRafId || 0);
+    if (existingAnimationId) {
+        cancelAnimationFrame(existingAnimationId);
+    }
+
+    const startAt = performance.now() + delayMs;
+    die.classList.add('rolling');
+
+    const animate = now => {
+        if (now < startAt) {
+            const waitId = requestAnimationFrame(animate);
+            die.dataset.rollRafId = String(waitId);
+            return;
+        }
+
+        const elapsed = now - startAt;
+        const t = Math.min(1, elapsed / durationMs);
+        const travelProgress = 1 - Math.pow(1 - t, 3.35);
+
+        let x = startX * (1 - travelProgress) + arcSkew * (travelProgress * (1 - travelProgress));
+        const arcY = -4 * lift * travelProgress * (1 - travelProgress);
+        const yBase = startY * (1 - travelProgress) + arcY;
+
+        let bounceY = 0;
+        if (t >= bounceStart) {
+            const u = (t - bounceStart) / (1 - bounceStart);
+            const impactLift = 1 + 0.26 * Math.sin(Math.min(1, u) * Math.PI);
+            bounceY = bounceAmplitude * impactLift * Math.exp(-bounceDamping * u) * Math.sin(u * bounceFrequency * Math.PI);
+        }
+
+        let wobbleX = 0;
+        let wobbleRot = 0;
+        if (t >= settleStart) {
+            const settleProgress = (t - settleStart) / (1 - settleStart);
+            const wobbleDecay = Math.exp(-wobbleDecayRate * settleProgress);
+            const wobbleWave = Math.sin(settleProgress * Math.PI * wobbleCycles);
+            wobbleX = wobbleAmplitudeX * wobbleDecay * wobbleWave;
+            wobbleRot = wobbleAmplitudeRot * wobbleDecay * Math.sin(settleProgress * Math.PI * (wobbleCycles - 0.4) + Math.PI / 5);
+        }
+
+        x += wobbleX;
+
+        const y = yBase + bounceY;
+        const rotation = (spinStartDeg * Math.pow(1 - travelProgress, 1.08)) + wobbleRot + (rollBiasDeg * travelProgress);
+        const scale = 0.9 + (0.1 * t) + (0.012 * Math.exp(-8 * t) * Math.sin(t * Math.PI * 6));
+
+        die.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${rotation}deg) scale(${scale})`;
+
+        if (t < 1) {
+            const frameId = requestAnimationFrame(animate);
+            die.dataset.rollRafId = String(frameId);
+            return;
+        }
+
+        die.classList.remove('rolling');
+        die.style.transform = '';
+        delete die.dataset.rollRafId;
+    };
+
+    const initialId = requestAnimationFrame(animate);
+    die.dataset.rollRafId = String(initialId);
+}
+
 function triggerDiceRollAnimation() {
-    const dice = Array.from(diceContainer.querySelectorAll('.die'));
+    const dice = diceContainer
+        ? Array.from(diceContainer.querySelectorAll('.die'))
+        : Array.from(playersList.querySelectorAll('.player-self-card .player-card-die'));
     if (dice.length === 0) {
         return;
     }
@@ -276,25 +424,43 @@ function triggerDiceRollAnimation() {
     for (let index = 0; index < dice.length; index += 1) {
         const die = dice[index];
         const centeredIndex = index - (dice.length - 1) / 2;
-        const throwDelayMs = index * 30;
-        const throwLiftPx = 8 + Math.max(0, 2 - Math.abs(centeredIndex)) * 4;
-        const throwClusterXPx = centeredIndex * 9;
-        const throwClusterYPx = -Math.abs(centeredIndex) * 1.2;
-        const throwSpinStartDeg = -230 - index * 18;
-        die.style.setProperty('--throw-delay', `${throwDelayMs}ms`);
-        die.style.setProperty('--throw-lift', `${throwLiftPx}px`);
-        die.style.setProperty('--throw-cluster-x', `${throwClusterXPx}px`);
-        die.style.setProperty('--throw-cluster-y', `${throwClusterYPx}px`);
-        die.style.setProperty('--throw-spin-start', `${throwSpinStartDeg}deg`);
-        die.classList.add('rolling');
-        setTimeout(() => {
-            die.classList.remove('rolling');
-            die.style.removeProperty('--throw-delay');
-            die.style.removeProperty('--throw-lift');
-            die.style.removeProperty('--throw-cluster-x');
-            die.style.removeProperty('--throw-cluster-y');
-            die.style.removeProperty('--throw-spin-start');
-        }, 1040 + throwDelayMs);
+        const variation = Math.random();
+        const variationAlt = Math.random();
+        const throwDelayMs = index * 18;
+        const throwLiftPx = 8.2 + Math.max(0, 2 - Math.abs(centeredIndex)) * 4 + variation * 1.4;
+        const throwClusterXPx = centeredIndex * 5.3;
+        const throwClusterYPx = -Math.abs(centeredIndex) * 0.65;
+        const throwSpinStartDeg = -260 - index * 20 - variation * 90;
+        const throwDistancePx = 228 + variationAlt * 20;
+        const throwDurationMs = 805 + variationAlt * 115;
+        const throwBounceAmplitude = 7.2 + variation * 2.3;
+        const throwBounceFrequency = 4 + variationAlt * 0.95;
+        const throwWobbleX = 1.95 + variationAlt * 1.05;
+        const throwWobbleRot = 5.9 + variation * 2.7;
+        const throwWobbleCycles = 7.2 + variationAlt * 1.8;
+        const throwRollBias = (variation - 0.5) * 16;
+        const throwArcSkew = (variationAlt - 0.5) * 9;
+
+        animateDieRollPhysics(die, {
+            durationMs: throwDurationMs,
+            delayMs: throwDelayMs,
+            lift: throwLiftPx,
+            clusterX: throwClusterXPx,
+            clusterY: throwClusterYPx,
+            spinStartDeg: throwSpinStartDeg,
+            throwDistancePx,
+            bounceStart: 0.67 + variationAlt * 0.05,
+            bounceAmplitude: throwBounceAmplitude,
+            bounceDamping: 5.8 + variationAlt * 1.2,
+            bounceFrequency: throwBounceFrequency,
+            settleStart: 0.69 + variation * 0.05,
+            wobbleAmplitudeX: throwWobbleX,
+            wobbleAmplitudeRot: throwWobbleRot,
+            wobbleCycles: throwWobbleCycles,
+            wobbleDecayRate: 5.4 + variation * 1.3,
+            rollBiasDeg: throwRollBias,
+            arcSkew: throwArcSkew
+        });
     }
     playDiceRollCue();
 
@@ -310,6 +476,52 @@ function playTurnAlertCue() {
     playTone(620, 110, 0.026, 'square');
     setTimeout(() => playTone(880, 130, 0.024, 'triangle'), 72);
     setTimeout(() => playTone(1120, 160, 0.02, 'sine'), 150);
+}
+
+function playTurnTimeoutCue() {
+    playTone(360, 140, 0.022, 'square');
+    setTimeout(() => playTone(300, 160, 0.022, 'square'), 140);
+    setTimeout(() => playTone(420, 180, 0.02, 'triangle'), 300);
+}
+
+function getCurrentTurnTimerKey() {
+    if (state.phase !== 'bidding' || !state.currentTurnPlayerId) {
+        return '';
+    }
+
+    return `${state.roundNumber}:${state.currentTurnPlayerId}`;
+}
+
+function syncTurnTimerState() {
+    const nextKey = getCurrentTurnTimerKey();
+    if (nextKey === state.turnTimerKey) {
+        return;
+    }
+
+    state.turnTimerKey = nextKey;
+    state.turnTimerStartedAt = nextKey ? Date.now() : 0;
+    state.turnTimerHasAlerted = false;
+}
+
+function updatePlayerTurnTimer() {
+    if (!state.ui.turnTimerEnabled) {
+        return;
+    }
+
+    const activeTimer = playersList ? playersList.querySelector('.player-turn-timer.active') : null;
+    if (!activeTimer || !state.turnTimerStartedAt) {
+        return;
+    }
+
+    const elapsedMs = Math.max(0, Date.now() - state.turnTimerStartedAt);
+    const clampedElapsedMs = Math.min(turnTimerDurationMs, elapsedMs);
+    const angle = (clampedElapsedMs / turnTimerDurationMs) * 360;
+    activeTimer.style.setProperty('--timer-angle', `${angle}deg`);
+
+    if (elapsedMs >= turnTimerDurationMs && !state.turnTimerHasAlerted) {
+        state.turnTimerHasAlerted = true;
+        playTurnTimeoutCue();
+    }
 }
 
 function playDudoSuccessCue() {
@@ -427,6 +639,9 @@ function setJoinState(enabled) {
     accountActionRegisterButton.disabled = !enabled;
     accountUsernameInput.disabled = !enabled;
     accountPasswordInput.disabled = !enabled;
+    if (accountPasswordToggleButton) {
+        accountPasswordToggleButton.disabled = !enabled;
+    }
     accountDisplayNameInput.disabled = !enabled;
     accountSubmitButton.disabled = !enabled;
     roomIdInput.disabled = !enabled;
@@ -555,18 +770,7 @@ function updateWaitingStartNotice() {
         return;
     }
 
-    const isPreGameWaiting = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
-    waitingStartNotice.classList.toggle('hidden', !isPreGameWaiting);
-
-    if (!isPreGameWaiting) {
-        return;
-    }
-
-    if (getActivePlayers().length >= 2) {
-        waitingStartNotice.textContent = 'Waiting for players... click Start Game when everyone is in.';
-    } else {
-        waitingStartNotice.textContent = 'Waiting for players... at least 2 players are needed before Start Game is enabled.';
-    }
+    waitingStartNotice.classList.add('hidden');
 }
 
 function renderLobbyCode() {
@@ -689,30 +893,88 @@ function addTouchFeedback(element) {
     element.addEventListener('touchcancel', clear, { passive: true });
 }
 
+function createSelfCardDieNode(value, index, tintColor = '') {
+    const die = document.createElement('div');
+    die.className = 'die player-card-die';
+    die.setAttribute('aria-label', `Your die ${index + 1}`);
+    if (tintColor) {
+        die.style.setProperty('--player-die-tint', toTranslucentColor(tintColor, 0.2));
+        die.style.setProperty('--player-die-border', toTranslucentColor(tintColor, 0.42));
+    }
+    renderDie(die, value);
+    return die;
+}
+
+function toTranslucentColor(colorValue, alpha = 0.18) {
+    const normalized = String(colorValue || '').trim();
+    const clampedAlpha = Math.max(0, Math.min(1, Number(alpha) || 0.18));
+
+    if (/^#([a-f0-9]{3}){1,2}$/i.test(normalized)) {
+        const hex = normalized.slice(1);
+        const expanded = hex.length === 3 ? hex.split('').map(char => char + char).join('') : hex;
+        const red = parseInt(expanded.slice(0, 2), 16);
+        const green = parseInt(expanded.slice(2, 4), 16);
+        const blue = parseInt(expanded.slice(4, 6), 16);
+        return `rgba(${red}, ${green}, ${blue}, ${clampedAlpha})`;
+    }
+
+    const rgbMatch = normalized.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+    if (rgbMatch) {
+        const red = Number(rgbMatch[1]);
+        const green = Number(rgbMatch[2]);
+        const blue = Number(rgbMatch[3]);
+        return `rgba(${red}, ${green}, ${blue}, ${clampedAlpha})`;
+    }
+
+    return `rgba(142, 168, 202, ${clampedAlpha})`;
+}
+
+function createOpponentDiePlaceholder(borderColor) {
+    const placeholder = document.createElement('span');
+    placeholder.className = 'player-die-placeholder';
+    if (borderColor) {
+        placeholder.style.setProperty('--opponent-die-border', toTranslucentColor(borderColor, 0.5));
+        placeholder.style.setProperty('--opponent-die-tint', toTranslucentColor(borderColor, 0.26));
+    }
+    return placeholder;
+}
+
 function renderPlayers() {
     playersList.replaceChildren();
     refreshPlayerColorAssignments();
+    playersList.style.gridTemplateRows = 'repeat(6, minmax(0, 1fr))';
+    const shouldShowDiceInCards = !(state.phase === 'waiting' && state.roundNumber === 0);
 
     for (const player of state.players) {
         const item = document.createElement('li');
         const isSelf = player.id === state.playerId;
         const isTurn = player.id === state.currentTurnPlayerId;
         const isEliminated = Number(player.diceCount || 0) <= 0;
+        const playerColor = getPlayerColor(player.name, player.id);
 
         if (isTurn) {
             item.classList.add('turn');
+            if (playerColor) {
+                item.style.setProperty('--turn-border', toTranslucentColor(playerColor, 0.58));
+                item.style.setProperty('--turn-bg', toTranslucentColor(playerColor, 0.035));
+                item.style.setProperty('--turn-glow', toTranslucentColor(playerColor, 0.34));
+                item.style.setProperty('--turn-glow-soft', toTranslucentColor(playerColor, 0.17));
+            }
+        }
+
+        if (isSelf) {
+            item.classList.add('player-self-card');
+        } else {
+            item.classList.add('player-opponent-card');
         }
 
         if (isEliminated) {
             item.classList.add('eliminated');
         }
 
-        const dot = document.createElement('span');
-        dot.className = 'turn-dot';
-
         const name = document.createElement('span');
         name.className = 'player-main';
-        name.append(createColoredPlayerNameNode(player.name));
+        name.append(createColoredPlayerNameNode(player.name, player.id));
         if (isSelf) {
             const selfTag = document.createElement('span');
             selfTag.className = 'player-self-tag';
@@ -730,28 +992,78 @@ function renderPlayers() {
         const playerInfo = document.createElement('div');
         playerInfo.className = 'player-info';
 
-        const diceIcons = document.createElement('span');
-        diceIcons.className = 'player-dice-icons';
-        const iconCount = Math.max(0, Math.min(5, Number(player.diceCount) || 0));
-        diceIcons.textContent = '🎲'.repeat(iconCount);
+        playerInfo.append(name);
 
-        playerInfo.append(name, diceIcons);
-        item.append(dot, playerInfo);
+        if (shouldShowDiceInCards) {
+            let diceDisplay;
+            if (isSelf) {
+                diceDisplay = document.createElement('div');
+                diceDisplay.className = 'player-dice-live';
+                const selfColor = playerColor;
+                const visibleSelfDice = Array.isArray(state.pendingYourDice)
+                    ? state.pendingYourDice
+                    : state.yourDice;
+
+                if (Array.isArray(visibleSelfDice) && visibleSelfDice.length > 0) {
+                    for (let index = 0; index < visibleSelfDice.length; index += 1) {
+                        diceDisplay.appendChild(createSelfCardDieNode(visibleSelfDice[index], index, selfColor));
+                    }
+                }
+            } else {
+                diceDisplay = document.createElement('div');
+                diceDisplay.className = 'player-dice-placeholders';
+                const iconCount = Math.max(0, Math.min(5, Number(player.diceCount) || 0));
+                const nameColor = playerColor;
+
+                if (iconCount > 0) {
+                    for (let index = 0; index < iconCount; index += 1) {
+                        diceDisplay.appendChild(createOpponentDiePlaceholder(nameColor));
+                    }
+                }
+            }
+
+            if (diceDisplay && diceDisplay.childElementCount > 0) {
+                const diceRow = document.createElement('div');
+                diceRow.className = 'player-dice-row';
+
+                diceRow.appendChild(diceDisplay);
+
+                const timer = document.createElement('span');
+                timer.className = 'player-turn-timer';
+                const isTurnTimerActive = state.ui.turnTimerEnabled && isTurn && state.phase === 'bidding' && !isEliminated;
+                timer.classList.toggle('active', isTurnTimerActive);
+                if (playerColor) {
+                    timer.style.setProperty('--timer-elapsed', toTranslucentColor(playerColor, 0.9));
+                    timer.style.setProperty('--timer-remaining', toTranslucentColor(playerColor, 0.45));
+                    timer.style.setProperty('--timer-border', toTranslucentColor(playerColor, 0.6));
+                }
+
+                diceRow.appendChild(timer);
+                playerInfo.appendChild(diceRow);
+            }
+        }
+
+        item.append(playerInfo);
         playersList.appendChild(item);
     }
 }
 
 function renderDice() {
-    diceContainer.replaceChildren();
+    if (diceContainer) {
+        diceContainer.replaceChildren();
 
-    for (let index = 0; index < state.yourDice.length; index += 1) {
-        const die = document.createElement('div');
-        die.className = 'die';
-        die.setAttribute('aria-label', `Die ${index + 1}`);
-        renderDie(die, state.yourDice[index]);
+        for (let index = 0; index < state.yourDice.length; index += 1) {
+            const die = document.createElement('div');
+            die.className = 'die die-enter';
+            die.setAttribute('aria-label', `Die ${index + 1}`);
+            renderDie(die, state.yourDice[index]);
 
-        addTouchFeedback(die);
-        diceContainer.appendChild(die);
+            addTouchFeedback(die);
+            diceContainer.appendChild(die);
+            setTimeout(() => {
+                die.classList.remove('die-enter');
+            }, 260);
+        }
     }
 
     const nextDiceKey = JSON.stringify(state.yourDice);
@@ -772,8 +1084,8 @@ function renderLastBid() {
     }
 
     lastBidText.replaceChildren(
-        createColoredPlayerNameNode(state.lastBid.playerName),
-        document.createTextNode(': '),
+        createColoredPlayerNameNode(state.lastBid.playerName, state.lastBid.playerId || ''),
+        document.createTextNode(' : '),
         createInlineBidValue(state.lastBid.quantity, state.lastBid.face, true)
     );
 }
@@ -783,6 +1095,7 @@ function createInlineBidValue(quantity, face, includePacosLabel = false) {
     wrap.className = 'inline-bid';
 
     const quantityText = document.createElement('span');
+    quantityText.className = 'inline-bid-qty';
     quantityText.textContent = String(quantity);
 
     const timesText = document.createElement('span');
@@ -802,6 +1115,13 @@ function createInlineBidValue(quantity, face, includePacosLabel = false) {
     }
 
     return wrap;
+}
+
+function createNumericEmphasisNode(value) {
+    const strong = document.createElement('strong');
+    strong.className = 'numeric-emphasis';
+    strong.textContent = String(value);
+    return strong;
 }
 
 function appendLineWithBidIcons(container, line) {
@@ -837,37 +1157,71 @@ function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function ensurePlayerColor(name) {
-    if (!name) {
-        return;
+function normalizePlayerName(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim() || 'Unknown';
+}
+
+function getPlayerColorKey(name, playerId = '') {
+    const normalizedId = String(playerId || '').trim();
+    if (normalizedId) {
+        return `id:${normalizedId}`;
     }
 
-    if (state.playerColorByName[name]) {
+    const normalizedName = normalizePlayerName(name);
+    return `name:${normalizedName}`;
+}
+
+function ensurePlayerColor(name, playerId = '') {
+    const colorKey = getPlayerColorKey(name, playerId);
+
+    if (state.playerColorByKey[colorKey]) {
         return;
     }
 
     const color = playerNameColorPalette[state.nextPlayerColorIndex % playerNameColorPalette.length];
-    state.playerColorByName[name] = color;
+    state.playerColorByKey[colorKey] = color;
     state.nextPlayerColorIndex += 1;
+}
+
+function getPlayerColor(name, playerId = '') {
+    const byIdKey = getPlayerColorKey(name, playerId);
+    if (state.playerColorByKey[byIdKey]) {
+        return state.playerColorByKey[byIdKey];
+    }
+
+    const byNameKey = getPlayerColorKey(name);
+    return state.playerColorByKey[byNameKey] || '';
 }
 
 function refreshPlayerColorAssignments() {
     for (const player of state.players) {
-        ensurePlayerColor(player.name);
+        ensurePlayerColor(player.name, player.id);
     }
 }
 
-function createColoredPlayerNameNode(name) {
-    ensurePlayerColor(name);
+function createColoredPlayerNameNode(name, playerId = '') {
+    const normalizedName = normalizePlayerName(name);
+    ensurePlayerColor(normalizedName, playerId);
     const nameSpan = document.createElement('span');
     nameSpan.className = 'log-player-name';
-    nameSpan.style.color = state.playerColorByName[name] || 'inherit';
-    nameSpan.textContent = name;
+    nameSpan.style.color = getPlayerColor(normalizedName, playerId) || 'inherit';
+    nameSpan.textContent = normalizedName;
     return nameSpan;
 }
 
-function highlightPlayerNames(container) {
-    const names = Object.keys(state.playerColorByName);
+function highlightPlayerNames(container, seenCountByName = null) {
+    const nameColorMap = new Map();
+    for (const player of state.players) {
+        const normalizedName = normalizePlayerName(player.name);
+        const colors = nameColorMap.get(normalizedName) || [];
+        const color = getPlayerColor(player.name, player.id);
+        if (color && !colors.includes(color)) {
+            colors.push(color);
+        }
+        nameColorMap.set(normalizedName, colors);
+    }
+
+    const names = Array.from(nameColorMap.keys());
     if (names.length === 0) {
         return;
     }
@@ -880,6 +1234,8 @@ function highlightPlayerNames(container) {
     while (walker.nextNode()) {
         textNodes.push(walker.currentNode);
     }
+
+    const sharedSeenCounts = seenCountByName instanceof Map ? seenCountByName : new Map();
 
     for (const textNode of textNodes) {
         const sourceText = textNode.nodeValue || '';
@@ -905,7 +1261,11 @@ function highlightPlayerNames(container) {
 
             const nameSpan = document.createElement('span');
             nameSpan.className = 'log-player-name';
-            nameSpan.style.color = state.playerColorByName[matchedName] || 'inherit';
+            const palette = nameColorMap.get(matchedName) || [];
+            const seenCount = sharedSeenCounts.get(matchedName) || 0;
+            const nextColor = palette.length > 0 ? palette[seenCount % palette.length] : 'inherit';
+            sharedSeenCounts.set(matchedName, seenCount + 1);
+            nameSpan.style.color = nextColor;
             nameSpan.textContent = matchedName;
             fragment.append(nameSpan);
 
@@ -960,6 +1320,7 @@ function mergeActionLog(existingLog, incomingLog) {
 function renderActionLog() {
     refreshPlayerColorAssignments();
     actionLogList.replaceChildren();
+    const seenCountByName = new Map();
 
     for (const line of state.actionLog) {
         const item = document.createElement('li');
@@ -974,7 +1335,7 @@ function renderActionLog() {
         }
 
         appendLineWithBidIcons(item, line);
-        highlightPlayerNames(item);
+        highlightPlayerNames(item, seenCountByName);
         actionLogList.appendChild(item);
     }
 
@@ -1007,7 +1368,7 @@ function renderChatMessages() {
     }
 
     for (const chatMessage of state.chatMessages) {
-        ensurePlayerColor(chatMessage.playerName || 'Player');
+        ensurePlayerColor(chatMessage.playerName || 'Player', chatMessage.playerId || '');
 
         const item = document.createElement('li');
         item.className = 'chat-message-item';
@@ -1015,14 +1376,14 @@ function renderChatMessages() {
         const meta = document.createElement('p');
         meta.className = 'chat-message-meta';
 
-        const sender = createColoredPlayerNameNode(chatMessage.playerName || 'Player');
+        const sender = createColoredPlayerNameNode(chatMessage.playerName || 'Player', chatMessage.playerId || '');
         const sentAt = Number(chatMessage.sentAt);
         const hasTimestamp = Number.isFinite(sentAt) && sentAt > 0;
         const timeText = hasTimestamp ? new Date(sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
         meta.append(sender, document.createTextNode(` • ${timeText}`));
 
         const content = document.createElement('p');
-        content.textContent = String(chatMessage.message || '');
+        content.textContent = censorProfanities(chatMessage.message || '');
 
         item.append(meta, content);
         chatMessagesList.appendChild(item);
@@ -1118,13 +1479,13 @@ function renderResolution() {
             ? ' was correct and gained a die.'
             : ' was wrong and lost a die.';
         resolutionText.replaceChildren(
-            createColoredPlayerNameNode(state.lastResolution.callerName),
+            createColoredPlayerNameNode(state.lastResolution.callerName, state.lastResolution.callerPlayerId || ''),
             document.createTextNode(' called Calza on '),
-            createColoredPlayerNameNode(state.lastResolution.bidderName),
+            createColoredPlayerNameNode(state.lastResolution.bidderName, state.lastResolution.bidderPlayerId || ''),
             document.createTextNode(' ('),
             createInlineBidValue(state.lastResolution.bid.quantity, state.lastResolution.bid.face, true),
             document.createTextNode(`). Actual count: ${state.lastResolution.actualCount}. `),
-            createColoredPlayerNameNode(state.lastResolution.callerName),
+            createColoredPlayerNameNode(state.lastResolution.callerName, state.lastResolution.callerPlayerId || ''),
             document.createTextNode(outcomeText)
         );
         return;
@@ -1132,13 +1493,13 @@ function renderResolution() {
 
     const verdict = state.lastResolution.bidWasCorrect ? 'Bid was correct' : 'Bid was wrong';
     resolutionText.replaceChildren(
-        createColoredPlayerNameNode(state.lastResolution.doubterName),
+        createColoredPlayerNameNode(state.lastResolution.doubterName, state.lastResolution.doubterPlayerId || ''),
         document.createTextNode(' called Dudo on '),
-        createColoredPlayerNameNode(state.lastResolution.bidderName),
+        createColoredPlayerNameNode(state.lastResolution.bidderName, state.lastResolution.bidderPlayerId || ''),
         document.createTextNode(' ('),
         createInlineBidValue(state.lastResolution.bid.quantity, state.lastResolution.bid.face, true),
         document.createTextNode(`). ${verdict}; `),
-        createColoredPlayerNameNode(state.lastResolution.loserName),
+        createColoredPlayerNameNode(state.lastResolution.loserName, state.lastResolution.loserPlayerId || ''),
         document.createTextNode(' lost a die.')
     );
 }
@@ -1291,7 +1652,11 @@ function renderFaceButtons(canAct) {
     }
 }
 
-function isMatchingDieForBidFace(dieValue, bidFace) {
+function isMatchingDieForBidFace(dieValue, bidFace, palificoRound = false) {
+    if (palificoRound) {
+        return dieValue === bidFace;
+    }
+
     if (bidFace === 1) {
         return dieValue === 1;
     }
@@ -1299,9 +1664,13 @@ function isMatchingDieForBidFace(dieValue, bidFace) {
     return dieValue === bidFace || dieValue === 1;
 }
 
-function createRevealDie(value, highlight) {
+function createRevealDie(value, highlight, tintColor = '') {
     const die = document.createElement('div');
     die.className = `die reveal${highlight ? ' match' : ''}`;
+    if (tintColor) {
+        die.style.setProperty('--reveal-die-tint', toTranslucentColor(tintColor, 0.25));
+        die.style.setProperty('--reveal-die-border', toTranslucentColor(tintColor, 0.5));
+    }
     renderDie(die, value);
     return die;
 }
@@ -1351,10 +1720,10 @@ function closeResolutionModal() {
         state.pendingYourTurnToast = false;
     }
 
-    if (state.pendingVictoryWinnerName) {
-        const winnerName = state.pendingVictoryWinnerName;
-        state.pendingVictoryWinnerName = null;
-        openVictoryModal(winnerName);
+    if (state.pendingVictoryWinner) {
+        const pendingWinner = state.pendingVictoryWinner;
+        state.pendingVictoryWinner = null;
+        openVictoryModal(pendingWinner.name, pendingWinner.id);
     }
 }
 
@@ -1381,11 +1750,6 @@ function spawnVictoryBurst() {
         piece.className = 'victory-piece';
         piece.textContent = symbols[index % symbols.length];
         const angle = (Math.PI * 2 * index) / pieces + Math.random() * 0.45;
-        const distance = 40 + Math.random() * 140;
-        const drift = (Math.random() - 0.5) * 36;
-        const dx = Math.cos(angle) * distance + drift;
-        const dy = Math.sin(angle) * distance - 35;
-        piece.style.setProperty('--spark-x', `${dx.toFixed(0)}px`);
         piece.style.setProperty('--spark-y', `${dy.toFixed(0)}px`);
         piece.style.animationDelay = `${Math.random() * 0.16}s`;
         piece.style.animationDuration = `${1.25 + Math.random() * 0.55}s`;
@@ -1393,9 +1757,9 @@ function spawnVictoryBurst() {
     }
 }
 
-function openVictoryModal(winnerName) {
+function openVictoryModal(winnerName, winnerPlayerId = '') {
     victoryMessage.replaceChildren(
-        createColoredPlayerNameNode(winnerName),
+        createColoredPlayerNameNode(winnerName, winnerPlayerId),
         document.createTextNode(' wins the game!')
     );
     spawnVictoryBurst();
@@ -1419,37 +1783,40 @@ function openDudoRevealModal(resolution) {
     }
 
     for (const playerDice of resolution.revealedDice) {
-        ensurePlayerColor(playerDice.playerName);
+        ensurePlayerColor(playerDice.playerName, playerDice.playerId || '');
     }
-    ensurePlayerColor(resolution.callerName || '');
-    ensurePlayerColor(resolution.loserName || '');
-    ensurePlayerColor(resolution.doubterName || '');
-    ensurePlayerColor(resolution.bidderName || '');
+    ensurePlayerColor(resolution.callerName || '', resolution.callerPlayerId || '');
+    ensurePlayerColor(resolution.loserName || '', resolution.loserPlayerId || '');
+    ensurePlayerColor(resolution.doubterName || '', resolution.doubterPlayerId || '');
+    ensurePlayerColor(resolution.bidderName || '', resolution.bidderPlayerId || '');
 
     modalRevealList.replaceChildren();
     modalSummary.replaceChildren();
     modalCaller.textContent = '';
+    modalSummary.classList.add('hidden');
+    modalMatchCount.classList.add('hidden');
 
     let highlightedCount = 0;
 
     for (const playerDice of resolution.revealedDice) {
         const row = document.createElement('div');
         row.className = 'reveal-row';
+        const revealTintColor = getPlayerColor(playerDice.playerName, playerDice.playerId || '');
 
         const playerTitle = document.createElement('p');
         playerTitle.className = 'reveal-player-name';
-        playerTitle.append(createColoredPlayerNameNode(playerDice.playerName));
+        playerTitle.append(createColoredPlayerNameNode(playerDice.playerName, playerDice.playerId || ''));
 
         const diceWrap = document.createElement('div');
         diceWrap.className = 'reveal-dice';
 
         for (const value of playerDice.dice) {
-            const isMatch = isMatchingDieForBidFace(value, resolution.bid.face);
+            const isMatch = isMatchingDieForBidFace(value, resolution.bid.face, Boolean(state.palificoRound));
             if (isMatch) {
                 highlightedCount += 1;
             }
 
-            diceWrap.appendChild(createRevealDie(value, isMatch));
+            diceWrap.appendChild(createRevealDie(value, isMatch, revealTintColor));
         }
 
         row.append(playerTitle, diceWrap);
@@ -1459,30 +1826,37 @@ function openDudoRevealModal(resolution) {
     if (resolution.type === 'calza') {
         const calzaSuccessful = Boolean(resolution.bidIsExact);
         const difference = Math.abs(Number(resolution.actualCount || 0) - Number(resolution.bid.quantity || 0));
+        const callerDiceBefore = Number(resolution.callerDiceBefore || 0);
+        const callerDiceAfter = Number(resolution.callerDiceAfter || 0);
+        const wasAlreadyAtMaxDice = calzaSuccessful && callerDiceBefore >= 5 && callerDiceAfter >= 5;
 
         modalTitle.textContent = 'Calza Reveal';
         modalCaller.replaceChildren(
-            createColoredPlayerNameNode(resolution.callerName),
-            document.createTextNode(' called Calza.')
+            createColoredPlayerNameNode(resolution.callerName, resolution.callerPlayerId || ''),
+            document.createTextNode(' called Calza on '),
+            createColoredPlayerNameNode(resolution.bidderName || 'the bidder', resolution.bidderPlayerId || ''),
+            document.createTextNode("'s bid of "),
+            createInlineBidValue(resolution.bid.quantity, resolution.bid.face, true)
         );
 
-        modalVerdict.textContent = calzaSuccessful ? 'Calza is SUCCESSFUL' : 'Calza FAILED';
+        const effectiveMatchCount = Number.isFinite(Number(resolution.actualCount))
+            ? Number(resolution.actualCount)
+            : highlightedCount;
+        modalVerdict.textContent = `${calzaSuccessful ? 'Calza SUCCESSFUL' : 'Calza FAILED'}. Matching dice found: ${effectiveMatchCount}.`;
         modalVerdict.classList.toggle('success', calzaSuccessful);
         modalVerdict.classList.toggle('fail', !calzaSuccessful);
 
-        modalSummary.append(
-            document.createTextNode('Bid was '),
-            createInlineBidValue(resolution.bid.quantity, resolution.bid.face, true),
-            document.createTextNode('.')
-        );
-
-        modalMatchCount.textContent = `Highlighted matches found: ${highlightedCount}. Off by: ${difference}.`;
-        modalMatchCount.classList.toggle('success', calzaSuccessful);
-        modalMatchCount.classList.toggle('fail', !calzaSuccessful);
-
         modalLoser.replaceChildren(
-            createColoredPlayerNameNode(resolution.callerName),
-            document.createTextNode(calzaSuccessful ? ' gains a die.' : ' loses a die.')
+            createColoredPlayerNameNode(resolution.callerName, resolution.callerPlayerId || ''),
+            ...(calzaSuccessful
+                ? [document.createTextNode(wasAlreadyAtMaxDice
+                    ? ' called an exact Calza and stays at max dice.'
+                    : ' gains a die.')]
+                : [
+                    document.createTextNode(' loses a die (off by '),
+                    createNumericEmphasisNode(difference),
+                    document.createTextNode(').')
+                ])
         );
 
         resolutionModal.classList.remove('hidden');
@@ -1491,29 +1865,23 @@ function openDudoRevealModal(resolution) {
 
     modalTitle.textContent = 'Dudo Reveal';
     modalCaller.replaceChildren(
-        createColoredPlayerNameNode(resolution.doubterName || 'A player'),
+        createColoredPlayerNameNode(resolution.doubterName || 'A player', resolution.doubterPlayerId || ''),
         document.createTextNode(' called Dudo on '),
-        createColoredPlayerNameNode(resolution.bidderName || 'the bidder'),
-        document.createTextNode("'s bid.")
+        createColoredPlayerNameNode(resolution.bidderName || 'the bidder', resolution.bidderPlayerId || ''),
+        document.createTextNode("'s bid of "),
+        createInlineBidValue(resolution.bid.quantity, resolution.bid.face, true)
     );
 
     const dudoSuccessful = !resolution.bidWasCorrect;
-    modalVerdict.textContent = dudoSuccessful ? '✅ Dudo SUCCESSFUL' : '⚠️ Dudo FAILED (bid stands)';
+    const effectiveMatchCount = Number.isFinite(Number(resolution.actualCount))
+        ? Number(resolution.actualCount)
+        : highlightedCount;
+    modalVerdict.textContent = `${dudoSuccessful ? 'Dudo SUCCESSFUL' : 'Dudo FAILED'}. Matching dice found: ${effectiveMatchCount}.`;
     modalVerdict.classList.toggle('success', dudoSuccessful);
     modalVerdict.classList.toggle('fail', !dudoSuccessful);
 
-    modalSummary.append(
-        document.createTextNode('Bid challenged: '),
-        createInlineBidValue(resolution.bid.quantity, resolution.bid.face, true),
-        document.createTextNode('.')
-    );
-
-    modalMatchCount.textContent = `Matching dice found: ${highlightedCount}.`;
-    modalMatchCount.classList.toggle('success', dudoSuccessful);
-    modalMatchCount.classList.toggle('fail', !dudoSuccessful);
-
     modalLoser.replaceChildren(
-        createColoredPlayerNameNode(resolution.loserName),
+        createColoredPlayerNameNode(resolution.loserName, resolution.loserPlayerId || ''),
         document.createTextNode(' loses a die.')
     );
 
@@ -1535,11 +1903,14 @@ function updateActionAvailability() {
     const canAct = getCanAct();
     const showSidebarRematch = state.phase === 'game_over';
     const showStartGame = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
+    const canEndGame = state.isConnected && (state.phase === 'bidding' || state.phase === 'game_over' || state.roundNumber > 0);
     const canStartGame = showStartGame && getActivePlayers().length >= 2;
     const canChat = state.isConnected && Boolean(state.roomId);
 
     startGameButton.classList.toggle('hidden', !showStartGame);
     startGameButton.disabled = !canStartGame;
+    endGameButton.classList.remove('hidden');
+    endGameButton.disabled = !canEndGame;
     sidebarRematchButton.classList.toggle('hidden', !showSidebarRematch);
     sidebarRematchButton.disabled = !showSidebarRematch || state.rematchRequested;
     chatToggleButton.disabled = !canChat;
@@ -1612,7 +1983,7 @@ function updateStatusFromState() {
             const fragment = document.createDocumentFragment();
             fragment.append(
                 document.createTextNode('🏁 Game over. '),
-                createColoredPlayerNameNode(winnerName),
+                createColoredPlayerNameNode(winnerName, state.winnerPlayerId || ''),
                 document.createTextNode(' wins.')
             );
             return fragment;
@@ -1622,7 +1993,7 @@ function updateStatusFromState() {
 
     if (state.phase === 'waiting') {
         if (state.roundNumber === 0) {
-            setStatus('⌛ Waiting Room');
+            setStatus('Waiting for players... click Start Game when everyone is in.');
         } else {
             setStatus('⌛ Waiting for at least 2 players to continue.');
         }
@@ -1650,10 +2021,12 @@ function updateStatusFromState() {
     const turnName = getPlayerNameById(state.currentTurnPlayerId);
     setStatusNodes(() => {
         const fragment = document.createDocumentFragment();
+        const turnNameNode = createColoredPlayerNameNode(turnName, state.currentTurnPlayerId || '');
+        turnNameNode.textContent = `${turnNameNode.textContent}’s`;
         fragment.append(
             document.createTextNode('🕒 '),
-            createColoredPlayerNameNode(turnName),
-            document.createTextNode("'s turn.")
+            turnNameNode,
+            document.createTextNode(' turn.')
         );
         return fragment;
     });
@@ -1672,11 +2045,11 @@ function maybeShowVictoryCelebration() {
     const winnerName = getPlayerNameById(state.winnerPlayerId);
 
     if (!resolutionModal.classList.contains('hidden')) {
-        state.pendingVictoryWinnerName = winnerName;
+        state.pendingVictoryWinner = { name: winnerName, id: state.winnerPlayerId || '' };
         return;
     }
 
-    openVictoryModal(winnerName);
+    openVictoryModal(winnerName, state.winnerPlayerId || '');
 }
 
 function maybePlayBidAcceptedCue() {
@@ -1696,6 +2069,8 @@ function applyStateUpdate(payload) {
     const previousPhase = state.phase;
     const previousRoundNumber = state.roundNumber;
     const previousTurnPlayerId = state.currentTurnPlayerId;
+    const previousTurnTimerEnabled = state.ui.turnTimerEnabled;
+    const timerChangedByName = String(payload.turnTimerChangedByName || '').trim();
     const incomingResolutionKey = getResolutionKey(payload.lastResolution || null, payload.roundNumber);
     const incomingIsNewResolution = Boolean(
         incomingResolutionKey
@@ -1726,15 +2101,39 @@ function applyStateUpdate(payload) {
     state.lastResolution = payload.lastResolution || null;
     state.deferDiceRollUntilResolutionClose = state.deferDiceRollUntilResolutionClose || incomingIsNewResolution;
     state.winnerPlayerId = payload.winnerPlayerId || null;
+    state.ui.turnTimerEnabled = Boolean(payload.turnTimerEnabled);
+    if (turnTimerToggle) {
+        turnTimerToggle.checked = state.ui.turnTimerEnabled;
+    }
+
+    if (state.ui.turnTimerEnabled !== previousTurnTimerEnabled) {
+        const actorPrefix = timerChangedByName ? `${timerChangedByName} turned ` : '';
+        if (state.ui.turnTimerEnabled) {
+            state.turnTimerKey = getCurrentTurnTimerKey();
+            state.turnTimerStartedAt = state.turnTimerKey ? Date.now() : 0;
+            state.turnTimerHasAlerted = false;
+            showEventToast(`${actorPrefix}turn timer is ON!`, 'round', { holdMs: 1800, exitMs: 620 });
+        } else {
+            state.turnTimerKey = '';
+            state.turnTimerStartedAt = 0;
+            state.turnTimerHasAlerted = false;
+            showEventToast(`${actorPrefix}turn timer is OFF.`, 'round', { holdMs: 1500, exitMs: 560 });
+        }
+    }
+
+    syncTurnTimerState();
 
     if (previousPhase === 'game_over' && state.phase !== 'game_over') {
         state.lastSeenWinnerPlayerId = null;
-        state.pendingVictoryWinnerName = null;
+        state.pendingVictoryWinner = null;
         state.pendingRoundToastMessage = null;
         state.pendingYourTurnToast = false;
         state.pendingYourDice = null;
         state.deferDiceRollUntilResolutionClose = false;
         state.rematchRequested = false;
+        state.turnTimerKey = '';
+        state.turnTimerStartedAt = 0;
+        state.turnTimerHasAlerted = false;
         closeVictoryModal();
     }
 
@@ -1747,9 +2146,13 @@ function applyStateUpdate(payload) {
     palificoIndicatorText.textContent = state.palificoRound
         ? `Yes${state.palificoFace ? ` (face ${state.palificoFace})` : ''}`
         : 'No';
+    if (roundCard) {
+        roundCard.classList.toggle('palifico-round', state.palificoRound);
+    }
     renderLobbyCode();
 
     renderPlayers();
+    updatePlayerTurnTimer();
     renderDice();
     renderLastBid();
     renderActionLog();
@@ -1780,6 +2183,23 @@ function applyStateUpdate(payload) {
 
     maybeAnimateRoundStart(previousRoundNumber);
     maybeAnimateYourTurn(previousTurnPlayerId, previousRoundNumber);
+
+    const becameFreshWaitingRoom =
+        state.phase === 'waiting'
+        && state.roundNumber === 0
+        && (previousPhase !== 'waiting' || previousRoundNumber > 0);
+
+    if (becameFreshWaitingRoom) {
+        const latestLogEntry = Array.isArray(state.actionLog) && state.actionLog.length > 0
+            ? String(state.actionLog[state.actionLog.length - 1])
+            : '';
+        const resetByMatch = latestLogEntry.match(/^(.+?) reset the game\.$/);
+        const resetByName = resetByMatch ? resetByMatch[1] : '';
+        const toastMessage = resetByName
+            ? `${resetByName} reset the game. Waiting for players.`
+            : 'Game reset. Waiting for players.';
+        showEventToast(toastMessage, 'round', { holdMs: 2100, exitMs: 640 });
+    }
 
     const isSafeToFlushDeferredYourTurn =
         state.pendingYourTurnToast
@@ -1865,7 +2285,7 @@ async function connectToMatch() {
             state.chatMessages = [];
             state.chatUnreadCount = 0;
             setChatOpen(false);
-            state.pendingVictoryWinnerName = null;
+            state.pendingVictoryWinner = null;
             showGameScreen();
             setLeaveState(true);
             updateChatVisibility();
@@ -1920,18 +2340,21 @@ async function connectToMatch() {
         state.selectedBidFace = null;
         state.lastSeenResolutionKey = null;
         state.lastSeenWinnerPlayerId = null;
-        state.pendingVictoryWinnerName = null;
+        state.pendingVictoryWinner = null;
         state.pendingRoundToastMessage = null;
         state.pendingYourTurnToast = false;
         state.deferDiceRollUntilResolutionClose = false;
         state.pendingYourDice = null;
         state.rematchRequested = false;
+        state.turnTimerKey = '';
+        state.turnTimerStartedAt = 0;
+        state.turnTimerHasAlerted = false;
         state.chatMessages = [];
         state.chatUnreadCount = 0;
         state.chatOpen = false;
         state.previousDiceKey = '';
         state.previousBidKey = '';
-        state.playerColorByName = {};
+        state.playerColorByKey = {};
         state.nextPlayerColorIndex = 0;
         state.socket = null;
 
@@ -2036,6 +2459,17 @@ function requestStartGame() {
     playTone(680, 95, 0.015, 'triangle');
 }
 
+function requestEndGame() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN || endGameButton.disabled) {
+        return;
+    }
+
+    openConfirmModal('End this game and reset room to waiting state?', () => {
+        state.socket.send(JSON.stringify({ type: 'end_game' }));
+        playTone(420, 105, 0.013, 'triangle');
+    });
+}
+
 function toggleChatPanel() {
     setChatOpen(!state.chatOpen);
 }
@@ -2054,6 +2488,30 @@ accountActionRegisterButton.addEventListener('click', () => {
     setAccountAction('register');
 });
 accountSubmitButton.addEventListener('click', connectToMatch);
+playerNameInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
+roomIdInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
+accountUsernameInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
 accountPasswordInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
         return;
@@ -2070,6 +2528,14 @@ accountDisplayNameInput.addEventListener('keydown', event => {
     event.preventDefault();
     connectToMatch();
 });
+roomIdAccountInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    event.preventDefault();
+    connectToMatch();
+});
 roomIdInput.addEventListener('input', () => {
     roomIdAccountInput.value = roomIdInput.value;
 });
@@ -2077,6 +2543,7 @@ roomIdAccountInput.addEventListener('input', () => {
     roomIdInput.value = roomIdAccountInput.value;
 });
 leaveButton.addEventListener('click', leaveMatch);
+endGameButton.addEventListener('click', requestEndGame);
 startGameButton.addEventListener('click', requestStartGame);
 bidButton.addEventListener('click', placeBid);
 calzaButton.addEventListener('click', callCalza);
@@ -2121,10 +2588,6 @@ soundToggle.addEventListener('change', () => {
     }
 });
 
-fontScaleSelect.addEventListener('change', () => {
-    setFontScale(fontScaleSelect.value);
-});
-
 advancedToggle.addEventListener('change', () => {
     setShowAdvanced(advancedToggle.checked);
 });
@@ -2132,6 +2595,33 @@ advancedToggle.addEventListener('change', () => {
 darkModeToggle.addEventListener('change', () => {
     setDarkMode(darkModeToggle.checked);
 });
+
+profanityToggle.addEventListener('change', () => {
+    state.ui.filterProfanities = profanityToggle.checked;
+    if (state.chatOpen) {
+        renderChatMessages();
+    }
+});
+
+turnTimerToggle.addEventListener('change', () => {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+        turnTimerToggle.checked = state.ui.turnTimerEnabled;
+        return;
+    }
+
+    state.socket.send(JSON.stringify({
+        type: 'set_turn_timer',
+        enabled: turnTimerToggle.checked
+    }));
+});
+
+if (accountPasswordToggleButton) {
+    accountPasswordToggleButton.addEventListener('click', () => {
+        const shouldShow = accountPasswordInput.type === 'password';
+        setPasswordVisibility(shouldShow);
+    });
+    addTouchFeedback(accountPasswordToggleButton);
+}
 
 confirmCancelButton.addEventListener('click', closeConfirmModal);
 confirmOverlay.addEventListener('click', closeConfirmModal);
@@ -2150,6 +2640,7 @@ addTouchFeedback(authModeAccountButton);
 addTouchFeedback(accountActionLoginButton);
 addTouchFeedback(accountActionRegisterButton);
 addTouchFeedback(leaveButton);
+addTouchFeedback(endGameButton);
 addTouchFeedback(startGameButton);
 addTouchFeedback(sidebarRematchButton);
 addTouchFeedback(bidButton);
@@ -2162,10 +2653,13 @@ addTouchFeedback(chatToggleButton);
 addTouchFeedback(chatSendButton);
 
 window.addEventListener('load', maybeHideLoadingScreen);
+setInterval(updatePlayerTurnTimer, turnTimerTickMs);
 
-setFontScale(fontScaleSelect.value);
 setShowAdvanced(advancedToggle.checked);
 setDarkMode(darkModeToggle.checked);
+state.ui.filterProfanities = profanityToggle.checked;
+turnTimerToggle.checked = state.ui.turnTimerEnabled;
+setPasswordVisibility(false);
 setAuthMode('guest');
 setAccountAction('login');
 setLeaveState(false);

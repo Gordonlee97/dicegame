@@ -118,6 +118,42 @@ test('start_game returns error when already started', () => {
     assert.match(latestError.payload.message, /already in progress|Cannot manually start/i);
 });
 
+test('end_game resets room to clean waiting state and restores starting dice', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'reset-room' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'reset-room' });
+
+    const game = manager.games.get('reset-room');
+    assert.ok(game);
+
+    manager.handleStartGame(wsAlice);
+    game.players[0].diceCount = 2;
+    game.players[1].diceCount = 1;
+
+    manager.handleEndGame(wsAlice);
+
+    assert.equal(game.round.phase, 'waiting');
+    assert.equal(game.round.roundNumber, 0);
+    assert.equal(game.round.lastBid, null);
+    assert.equal(game.round.winnerPlayerId, null);
+
+    assert.equal(game.players.every(player => player.diceCount === 5), true);
+    assert.equal(game.players.every(player => Array.isArray(player.currentDice) && player.currentDice.length === 0), true);
+
+    assert.deepEqual(game.actionLog, [
+        'Room created. Waiting for players.',
+        'Alice reset the game.'
+    ]);
+
+    const roomSettings = manager.getRoomUiSettings('reset-room');
+    assert.equal(roomSettings.turnTimerEnabled, false);
+});
+
 test('chat message is broadcast only to players in same room and included in history for new joiner', () => {
     const sent = [];
     const manager = createManager(sent);

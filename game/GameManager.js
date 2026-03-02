@@ -68,6 +68,7 @@ class GameManager {
     constructor(options) {
         this.games = new Map();
         this.roomChatHistory = new Map();
+        this.roomUiSettings = new Map();
         this.clientToRoom = new Map();
         this.chatSafetyByPlayerId = new Map();
         this.matchSessions = new Map();
@@ -263,7 +264,35 @@ class GameManager {
             this.games.set(roomId, new PerudoGame(roomId, this.gameOptions));
         }
 
+        if (!this.roomUiSettings.has(roomId)) {
+            this.roomUiSettings.set(roomId, {
+                turnTimerEnabled: false,
+                turnTimerChangedByName: ''
+            });
+        }
+
         return this.games.get(roomId);
+    }
+
+    getRoomUiSettings(roomId) {
+        if (!this.roomUiSettings.has(roomId)) {
+            this.roomUiSettings.set(roomId, {
+                turnTimerEnabled: false,
+                turnTimerChangedByName: ''
+            });
+        }
+
+        return this.roomUiSettings.get(roomId);
+    }
+
+    buildStateForClient(game, player) {
+        const state = game.buildStateForPlayer(player);
+        const uiSettings = this.getRoomUiSettings(game.roomId);
+        return {
+            ...state,
+            turnTimerEnabled: Boolean(uiSettings.turnTimerEnabled),
+            turnTimerChangedByName: uiSettings.turnTimerChangedByName || ''
+        };
     }
 
     createRematchRoomId(roomId) {
@@ -322,7 +351,7 @@ class GameManager {
 
         this.clientToRoom.set(ws, targetRoomId);
         this.send(ws, {
-            ...game.buildStateForPlayer(joinedPlayer),
+            ...this.buildStateForClient(game, joinedPlayer),
             type: 'joined',
             playerId: player.id
         });
@@ -337,7 +366,7 @@ class GameManager {
 
     broadcastState(game) {
         for (const player of game.players) {
-            this.send(player.ws, game.buildStateForPlayer(player));
+            this.send(player.ws, this.buildStateForClient(game, player));
         }
     }
 
@@ -490,7 +519,7 @@ class GameManager {
         this.clientToRoom.set(ws, roomId);
 
         this.send(ws, {
-            ...game.buildStateForPlayer(joinedPlayer),
+            ...this.buildStateForClient(game, joinedPlayer),
             type: 'joined',
             playerId: player.id,
             authType: player.authType
@@ -537,6 +566,7 @@ class GameManager {
         if (game.players.length === 0) {
             this.finalizeMatchIfNeeded(game, 'room_empty');
             this.roomChatHistory.delete(roomId);
+            this.roomUiSettings.delete(roomId);
             this.games.delete(roomId);
             this.matchSessions.delete(roomId);
             this.completedMatchRooms.delete(roomId);
@@ -658,6 +688,62 @@ class GameManager {
         this.broadcastState(context.game);
     }
 
+    handleEndGame(ws) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        if (context.game.round.phase === 'waiting' && context.game.round.roundNumber === 0) {
+            this.send(ws, { type: 'error', message: 'Game is already waiting to start.' });
+            return;
+        }
+
+        if (context.game.round.phase === 'game_over') {
+            this.finalizeMatchIfNeeded(context.game, 'end_game');
+        }
+
+        context.game.resetToWaiting(context.player);
+
+        this.roomUiSettings.set(context.game.roomId, {
+            turnTimerEnabled: false,
+            turnTimerChangedByName: ''
+        });
+
+        this.matchSessions.delete(context.game.roomId);
+        this.completedMatchRooms.delete(context.game.roomId);
+
+        this.appendMatchAction(context.game, 'end_game', context.player, {
+            roomId: context.game.roomId
+        });
+
+        this.broadcastState(context.game);
+    }
+
+    handleTurnTimerSetting(ws, payload) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        const enabled = Boolean(payload && payload.enabled);
+        const roomSettings = this.getRoomUiSettings(context.game.roomId);
+        if (roomSettings.turnTimerEnabled === enabled) {
+            this.broadcastState(context.game);
+            return;
+        }
+
+        roomSettings.turnTimerEnabled = enabled;
+        roomSettings.turnTimerChangedByName = context.player.name;
+        context.game.addLog(`${context.player.name} turned turn timer ${enabled ? 'ON' : 'OFF'}.`);
+
+        this.appendMatchAction(context.game, 'set_turn_timer', context.player, {
+            enabled
+        });
+
+        this.broadcastState(context.game);
+    }
+
     handleChatMessage(ws, payload) {
         const context = this.getContext(ws);
         if (!context) {
@@ -742,6 +828,7 @@ class GameManager {
         if (sourceGame.players.length === 0) {
             this.finalizeMatchIfNeeded(sourceGame, 'rematch_room_empty');
             this.games.delete(sourceRoomId);
+            this.roomUiSettings.delete(sourceRoomId);
             this.matchSessions.delete(sourceRoomId);
             this.completedMatchRooms.delete(sourceRoomId);
         } else {

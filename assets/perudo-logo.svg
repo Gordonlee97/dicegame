@@ -1,0 +1,38 @@
+<svg width="720" height="220" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Perudo Logo</title>
+  <desc id="desc">Decorative Perudo game logo</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFDD1A"/>
+      <stop offset="1" stop-color="#F8C90C"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="200%" height="200%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#8c5d00" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="720" height="220" rx="14" fill="url(#bg)"/>
+
+  <g opacity="0.18" stroke="#fff1aa" stroke-width="8" stroke-linecap="round">
+    <path d="M18 26h20v20"/>
+    <path d="M18 194h20v-20"/>
+    <path d="M702 26h-20v20"/>
+    <path d="M702 194h-20v-20"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="190" y="62" width="54" height="90" rx="10" fill="#D94A57"/>
+    <rect x="248" y="58" width="54" height="94" rx="10" fill="#F2E77A"/>
+    <rect x="306" y="60" width="54" height="92" rx="10" fill="#4C9BD7"/>
+    <rect x="364" y="58" width="54" height="94" rx="10" fill="#8A6B78"/>
+    <rect x="422" y="60" width="54" height="92" rx="10" fill="#67708A"/>
+    <rect x="480" y="60" width="54" height="92" rx="10" fill="#5CB870"/>
+
+    <text x="217" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">P</text>
+    <text x="275" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">E</text>
+    <text x="333" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">R</text>
+    <text x="391" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">U</text>
+    <text x="449" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">D</text>
+    <text x="507" y="122" text-anchor="middle" font-family="Trebuchet MS, Verdana, sans-serif" font-size="56" font-weight="900" fill="#FFFFFF" stroke="#2E3340" stroke-width="4">O</text>
+  </g>
+</svg>

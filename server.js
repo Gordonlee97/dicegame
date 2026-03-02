@@ -330,6 +330,16 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'end_game') {
+                    gameManager.handleEndGame(ws);
+                    return;
+                }
+
+                if (data.type === 'set_turn_timer') {
+                    gameManager.handleTurnTimerSetting(ws, data);
+                    return;
+                }
+
                 if (data.type === 'chat_message') {
                     gameManager.handleChatMessage(ws, data);
                     return;
