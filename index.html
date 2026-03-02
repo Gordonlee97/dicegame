@@ -37,7 +37,7 @@
                         <label for="room-id">Room Code</label>
                         <input id="room-id" type="text" maxlength="24" value="lobby" autocomplete="off">
 
-                        <button id="join-button" type="button">Join Table</button>
+                        <button id="join-button" type="button">Join Room</button>
                     </section>
 
                     <section id="account-form" class="auth-form-panel hidden" aria-label="Account form">
@@ -50,7 +50,13 @@
                         <input id="account-username" type="text" maxlength="32" autocomplete="username">
 
                         <label for="account-password" id="account-password-label">Password</label>
-                        <input id="account-password" type="password" maxlength="120" autocomplete="current-password">
+                        <div class="password-input-wrap">
+                            <input id="account-password" type="password" maxlength="120" autocomplete="current-password">
+                            <button id="account-password-toggle" class="password-visibility-toggle" type="button" aria-label="Show password" aria-pressed="false">
+                                <span class="eye-icon eye-open" aria-hidden="true"></span>
+                                <span class="eye-icon eye-closed" aria-hidden="true"></span>
+                            </button>
+                        </div>
 
                         <label for="account-display-name" id="account-display-name-label" class="hidden">Display Name</label>
                         <input id="account-display-name" class="hidden" type="text" maxlength="20" autocomplete="nickname">
@@ -63,6 +69,7 @@
                 </div>
 
                 <aside class="auth-right-pane" aria-hidden="true">
+                    <img src="extras/Pictures/Screenshot%202026-03-02%20051341.png" alt="Perudo logo" class="join-logo">
                     <h2>Welcome back</h2>
                     <p>Sign in to keep your identity across matches, or jump in instantly as a guest.</p>
                 </aside>
@@ -71,21 +78,15 @@
         </section>
 
         <section id="game-screen" class="screen hidden" aria-label="Game screen">
-            <aside class="players-sidebar" aria-label="Players in match">
-                <h2>👥 Players</h2>
-                <ul id="players-list"></ul>
-                <button id="start-game-button" type="button" class="sidebar-rematch hidden">Start Game</button>
-                <button id="sidebar-rematch-button" type="button" class="sidebar-rematch hidden">Rematch</button>
-                <button id="leave-button" type="button">Leave</button>
-            </aside>
-
             <section class="game-panel" aria-label="Dice game area">
                 <header class="game-header">
-                    <div>
+                    <div class="game-header-left">
                         <h1 class="title-display">🎲 Perudo</h1>
-                        <p class="lobby-chip">Room Code: <span id="lobby-code">-</span></p>
                     </div>
-                    <button id="settings-toggle" type="button" class="icon-button" aria-expanded="false" aria-controls="settings-modal">⚙️</button>
+                    <div class="game-header-right">
+                        <button id="start-game-button" type="button" class="header-start-button hidden">Start Game</button>
+                        <button id="settings-toggle" type="button" class="icon-button" aria-expanded="false" aria-controls="settings-modal">⚙️</button>
+                    </div>
                 </header>
 
                 <p id="status-game" class="turn-banner" aria-live="polite">Waiting for players...</p>
@@ -103,35 +104,38 @@
                     </article>
                 </div>
 
-                <section class="dice-stage" aria-label="Your dice section">
-                    <div class="section-heading-row">
-                        <h2>Your Dice</h2>
-                    </div>
-                    <div id="dice-container" class="dice-container" aria-label="Your dice"></div>
-                </section>
+                <section class="table-row" aria-label="Players and controls">
+                    <aside class="players-sidebar players-inline-panel" aria-label="Players in match">
+                        <h2>👥 Players</h2>
+                        <ul id="players-list"></ul>
+                        <div class="players-sidebar-actions">
+                            <button id="sidebar-rematch-button" type="button" class="sidebar-rematch hidden">Rematch</button>
+                        </div>
+                    </aside>
 
-                <section class="actions-panel" aria-label="Bid controls">
-                    <div class="section-heading-row">
-                        <h2>Action Console</h2>
-                    </div>
-                    <div class="bid-controls">
-                        <div class="bid-group" aria-label="Quantity options">
-                            <p class="group-label">🔢 Quantity</p>
-                            <div id="quantity-buttons" class="option-buttons"></div>
+                    <section class="actions-panel vertical-console" aria-label="Bid controls">
+                        <div class="section-heading-row">
+                            <h2>Action Console</h2>
+                        </div>
+                        <div class="bid-controls">
+                            <div class="bid-group" aria-label="Quantity options">
+                                <p class="group-label">🔢 Quantity</p>
+                                <div id="quantity-buttons" class="option-buttons"></div>
+                            </div>
+
+                            <div class="bid-group" aria-label="Value options">
+                                <p class="group-label">🎯 Value</p>
+                                <div id="face-buttons" class="option-buttons face-buttons"></div>
+                            </div>
                         </div>
 
-                        <div class="bid-group" aria-label="Value options">
-                            <p class="group-label">🎯 Value</p>
-                            <div id="face-buttons" class="option-buttons face-buttons"></div>
+                        <div class="action-buttons">
+                            <button id="bid-button" type="button" class="hot-action" disabled>Bid</button>
+                            <button id="calza-button" type="button" disabled>Calza</button>
+                            <button id="dudo-button" type="button" class="critical-action" disabled>Dudo</button>
                         </div>
-                    </div>
-
-                    <div class="action-buttons">
-                        <button id="bid-button" type="button" class="hot-action" disabled>Bid</button>
-                        <button id="calza-button" type="button" disabled>Calza</button>
-                        <button id="dudo-button" type="button" class="critical-action" disabled>Dudo</button>
-                    </div>
-                    <p id="action-helper" class="action-helper">Select a legal quantity and value to place a bid.</p>
+                        <p id="action-helper" class="action-helper">Select a legal quantity and value to place a bid.</p>
+                    </section>
                 </section>
 
                 <section class="resolution-panel" aria-label="Round resolution">
@@ -146,6 +150,11 @@
                     <h2>🧾 Action Log</h2>
                     <ul id="action-log"></ul>
                 </section>
+                <div class="log-footer-actions">
+                    <button id="end-game-button" type="button" class="log-end-game-button hidden">End Game</button>
+                    <button id="leave-button" type="button" class="log-leave-button">Leave</button>
+                    <p class="lobby-chip log-room-code">Room Code: <span id="lobby-code">-</span></p>
+                </div>
             </aside>
 
             <section id="room-chat" class="room-chat" aria-label="Room chat">
@@ -208,16 +217,6 @@
                         <input id="sound-toggle" type="checkbox" checked>
                     </label>
 
-                    <label class="setting-item" for="font-scale">
-                        <span>Text Size</span>
-                        <select id="font-scale">
-                            <option value="0.85">Small</option>
-                            <option value="1" selected>Normal</option>
-                            <option value="1.2">Large</option>
-                            <option value="1.4">XL</option>
-                        </select>
-                    </label>
-
                     <label class="setting-item" for="advanced-toggle">
                         <span>Show Last Round</span>
                         <input id="advanced-toggle" type="checkbox">
@@ -226,6 +225,16 @@
                     <label class="setting-item" for="dark-mode-toggle">
                         <span>Dark Mode</span>
                         <input id="dark-mode-toggle" type="checkbox">
+                    </label>
+
+                    <label class="setting-item" for="profanity-toggle">
+                        <span>Filter Profanities</span>
+                        <input id="profanity-toggle" type="checkbox">
+                    </label>
+
+                    <label class="setting-item" for="turn-timer-toggle">
+                        <span>Turn Timer</span>
+                        <input id="turn-timer-toggle" type="checkbox">
                     </label>
                 </div>
 

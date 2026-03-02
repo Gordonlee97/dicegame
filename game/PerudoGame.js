@@ -129,6 +129,23 @@ class PerudoGame {
         return { ok: true };
     }
 
+    resetToWaiting(player = null) {
+        this.round = new RoundState();
+        this.resolutionEventId = 0;
+
+        for (const roomPlayer of this.players) {
+            roomPlayer.diceCount = this.startingDicePerPlayer;
+            roomPlayer.currentDice = [];
+        }
+
+        this.actionLog = ['Room created. Waiting for players.'];
+        if (player && player.name) {
+            this.addLog(`${player.name} reset the game.`);
+        }
+
+        return { ok: true };
+    }
+
     startRound(starterIndex, palificoRound) {
         if (this.getActivePlayerCount() < this.minPlayersToStart) {
             this.round.setWaiting();
