@@ -6,7 +6,6 @@ const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
 const endGameButton = document.getElementById('end-game-button');
 const startGameButton = document.getElementById('start-game-button');
-const sidebarRematchButton = document.getElementById('sidebar-rematch-button');
 const authModeGuestButton = document.getElementById('auth-mode-guest');
 const authModeAccountButton = document.getElementById('auth-mode-account');
 const guestForm = document.getElementById('guest-form');
@@ -80,6 +79,7 @@ const quantityOverflowOverlay = document.getElementById('quantity-overflow-overl
 const quantityOverflowCloseButton = document.getElementById('quantity-overflow-close');
 const quantityOverflowButtons = document.getElementById('quantity-overflow-buttons');
 const resolutionPanel = document.querySelector('.resolution-panel');
+const gamePanel = document.querySelector('.game-panel');
 const logSidebar = document.querySelector('.log-sidebar');
 const eventToastLayer = document.getElementById('event-toast-layer');
 const chatToggleButton = document.getElementById('chat-toggle-button');
@@ -141,7 +141,7 @@ const state = {
     }
 };
 
-const playerNameColorPalette = ['#2563eb', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#a16207'];
+const playerNameColorPalette = ['#4da3ff', '#e11d48', '#16a34a', '#a855f7', '#ea580c', '#a16207'];
 const maxActionLogEntries = 120;
 const maxChatMessages = 150;
 const turnTimerDurationMs = 30000;
@@ -191,6 +191,34 @@ const pipPositionsByValue = {
 
 let audioContext;
 let diceRollAudio;
+let layoutSyncFrame = 0;
+
+function syncDesktopSidebarHeight() {
+    if (!gamePanel || !logSidebar) {
+        return;
+    }
+
+    if (!window.matchMedia('(min-width: 1161px)').matches) {
+        logSidebar.style.height = '';
+        return;
+    }
+
+    const panelHeight = Math.ceil(gamePanel.getBoundingClientRect().height);
+    if (panelHeight > 0) {
+        logSidebar.style.height = `${panelHeight}px`;
+    }
+}
+
+function scheduleDesktopSidebarHeightSync() {
+    if (layoutSyncFrame) {
+        cancelAnimationFrame(layoutSyncFrame);
+    }
+
+    layoutSyncFrame = requestAnimationFrame(() => {
+        layoutSyncFrame = 0;
+        syncDesktopSidebarHeight();
+    });
+}
 
 function maybeHideLoadingScreen() {
     setTimeout(() => {
@@ -205,6 +233,7 @@ function setShowAdvanced(enabled) {
     resolutionPanel.style.display = showValue;
     logSidebar.style.display = '';
     rulesPanel.open = false;
+    scheduleDesktopSidebarHeightSync();
 }
 
 function setDarkMode(enabled) {
@@ -898,8 +927,10 @@ function createSelfCardDieNode(value, index, tintColor = '') {
     die.className = 'die player-card-die';
     die.setAttribute('aria-label', `Your die ${index + 1}`);
     if (tintColor) {
-        die.style.setProperty('--player-die-tint', toTranslucentColor(tintColor, 0.2));
-        die.style.setProperty('--player-die-border', toTranslucentColor(tintColor, 0.42));
+        const tintAlpha = state.ui.darkMode ? 0.52 : 0.2;
+        const borderAlpha = state.ui.darkMode ? 0.72 : 0.42;
+        die.style.setProperty('--player-die-tint', toTranslucentColor(tintColor, tintAlpha));
+        die.style.setProperty('--player-die-border', toTranslucentColor(tintColor, borderAlpha));
     }
     renderDie(die, value);
     return die;
@@ -933,8 +964,10 @@ function createOpponentDiePlaceholder(borderColor) {
     const placeholder = document.createElement('span');
     placeholder.className = 'player-die-placeholder';
     if (borderColor) {
-        placeholder.style.setProperty('--opponent-die-border', toTranslucentColor(borderColor, 0.5));
-        placeholder.style.setProperty('--opponent-die-tint', toTranslucentColor(borderColor, 0.26));
+        const borderAlpha = state.ui.darkMode ? 0.62 : 0.5;
+        const tintAlpha = state.ui.darkMode ? 0.44 : 0.26;
+        placeholder.style.setProperty('--opponent-die-border', toTranslucentColor(borderColor, borderAlpha));
+        placeholder.style.setProperty('--opponent-die-tint', toTranslucentColor(borderColor, tintAlpha));
     }
     return placeholder;
 }
@@ -1668,8 +1701,10 @@ function createRevealDie(value, highlight, tintColor = '') {
     const die = document.createElement('div');
     die.className = `die reveal${highlight ? ' match' : ''}`;
     if (tintColor) {
-        die.style.setProperty('--reveal-die-tint', toTranslucentColor(tintColor, 0.25));
-        die.style.setProperty('--reveal-die-border', toTranslucentColor(tintColor, 0.5));
+        const tintAlpha = state.ui.darkMode ? 0.52 : 0.25;
+        const borderAlpha = state.ui.darkMode ? 0.66 : 0.5;
+        die.style.setProperty('--reveal-die-tint', toTranslucentColor(tintColor, tintAlpha));
+        die.style.setProperty('--reveal-die-border', toTranslucentColor(tintColor, borderAlpha));
     }
     renderDie(die, value);
     return die;
@@ -1750,6 +1785,10 @@ function spawnVictoryBurst() {
         piece.className = 'victory-piece';
         piece.textContent = symbols[index % symbols.length];
         const angle = (Math.PI * 2 * index) / pieces + Math.random() * 0.45;
+        const distance = 64 + Math.random() * 62;
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+        piece.style.setProperty('--spark-x', `${dx.toFixed(0)}px`);
         piece.style.setProperty('--spark-y', `${dy.toFixed(0)}px`);
         piece.style.animationDelay = `${Math.random() * 0.16}s`;
         piece.style.animationDuration = `${1.25 + Math.random() * 0.55}s`;
@@ -1901,18 +1940,18 @@ function closeConfirmModal() {
 
 function updateActionAvailability() {
     const canAct = getCanAct();
-    const showSidebarRematch = state.phase === 'game_over';
     const showStartGame = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
+    const showHeaderRematch = state.isConnected && state.phase === 'game_over';
     const canEndGame = state.isConnected && (state.phase === 'bidding' || state.phase === 'game_over' || state.roundNumber > 0);
     const canStartGame = showStartGame && getActivePlayers().length >= 2;
+    const canHeaderRematch = showHeaderRematch && !state.rematchRequested;
     const canChat = state.isConnected && Boolean(state.roomId);
 
-    startGameButton.classList.toggle('hidden', !showStartGame);
-    startGameButton.disabled = !canStartGame;
+    startGameButton.classList.toggle('hidden', !(showStartGame || showHeaderRematch));
+    startGameButton.textContent = showHeaderRematch ? 'Rematch' : 'Start Game';
+    startGameButton.disabled = showHeaderRematch ? !canHeaderRematch : !canStartGame;
     endGameButton.classList.remove('hidden');
     endGameButton.disabled = !canEndGame;
-    sidebarRematchButton.classList.toggle('hidden', !showSidebarRematch);
-    sidebarRematchButton.disabled = !showSidebarRematch || state.rematchRequested;
     chatToggleButton.disabled = !canChat;
     chatSendButton.disabled = !canChat;
     updateWaitingStartNotice();
@@ -2220,6 +2259,7 @@ function applyStateUpdate(payload) {
     updateActionAvailability();
     updateStatusFromState();
     maybeShowVictoryCelebration();
+    scheduleDesktopSidebarHeightSync();
 
     state.previousTurnPlayerId = state.currentTurnPlayerId;
 }
@@ -2444,7 +2484,6 @@ function requestRematch() {
 
     state.rematchRequested = true;
     rematchButton.disabled = true;
-    sidebarRematchButton.disabled = true;
     rematchStatus.textContent = 'Rematch requested. Joining fresh table...';
     state.socket.send(JSON.stringify({ type: 'rematch' }));
     playTone(760, 90, 0.014, 'triangle');
@@ -2457,6 +2496,15 @@ function requestStartGame() {
 
     state.socket.send(JSON.stringify({ type: 'start_game' }));
     playTone(680, 95, 0.015, 'triangle');
+}
+
+function handlePrimaryHeaderButtonClick() {
+    if (state.phase === 'game_over') {
+        requestRematch();
+        return;
+    }
+
+    requestStartGame();
 }
 
 function requestEndGame() {
@@ -2544,12 +2592,11 @@ roomIdAccountInput.addEventListener('input', () => {
 });
 leaveButton.addEventListener('click', leaveMatch);
 endGameButton.addEventListener('click', requestEndGame);
-startGameButton.addEventListener('click', requestStartGame);
+startGameButton.addEventListener('click', handlePrimaryHeaderButtonClick);
 bidButton.addEventListener('click', placeBid);
 calzaButton.addEventListener('click', callCalza);
 dudoButton.addEventListener('click', callDudo);
 rematchButton.addEventListener('click', requestRematch);
-sidebarRematchButton.addEventListener('click', requestRematch);
 chatToggleButton.addEventListener('click', toggleChatPanel);
 chatCloseButton.addEventListener('click', () => setChatOpen(false));
 chatSendButton.addEventListener('click', sendChatMessage);
@@ -2642,7 +2689,6 @@ addTouchFeedback(accountActionRegisterButton);
 addTouchFeedback(leaveButton);
 addTouchFeedback(endGameButton);
 addTouchFeedback(startGameButton);
-addTouchFeedback(sidebarRematchButton);
 addTouchFeedback(bidButton);
 addTouchFeedback(calzaButton);
 addTouchFeedback(dudoButton);
@@ -2653,6 +2699,7 @@ addTouchFeedback(chatToggleButton);
 addTouchFeedback(chatSendButton);
 
 window.addEventListener('load', maybeHideLoadingScreen);
+window.addEventListener('resize', scheduleDesktopSidebarHeightSync);
 setInterval(updatePlayerTurnTimer, turnTimerTickMs);
 
 setShowAdvanced(advancedToggle.checked);
@@ -2668,5 +2715,6 @@ renderLobbyCode();
 updateChatVisibility();
 renderChatUnreadBadge();
 renderChatMessages();
+scheduleDesktopSidebarHeightSync();
 showJoinScreen();
 setStatus('Not connected.');
