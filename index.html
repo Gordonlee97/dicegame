@@ -108,9 +108,6 @@
                     <aside class="players-sidebar players-inline-panel" aria-label="Players in match">
                         <h2>👥 Players</h2>
                         <ul id="players-list"></ul>
-                        <div class="players-sidebar-actions">
-                            <button id="sidebar-rematch-button" type="button" class="sidebar-rematch hidden">Rematch</button>
-                        </div>
                     </aside>
 
                     <section class="actions-panel vertical-console" aria-label="Bid controls">
@@ -274,12 +271,15 @@
             <div class="modal-overlay" id="victory-modal-overlay"></div>
             <div class="modal-card victory-card" role="dialog" aria-modal="true" aria-labelledby="victory-title">
                 <div class="modal-header">
-                    <h2 id="victory-title">🏆 Victory!</h2>
+                    <h2 id="victory-title">Game Over!</h2>
                     <button id="victory-close-button" type="button" class="modal-close">Close</button>
                 </div>
                 <p id="victory-message" class="modal-summary victory-message"></p>
                 <p class="victory-subtitle">That was a great round!</p>
-                <div id="victory-burst" class="victory-burst" aria-hidden="true"></div>
+                <div class="victory-showcase" aria-hidden="true">
+                    <div id="victory-burst" class="victory-burst"></div>
+                    <div class="victory-trophy">🏆</div>
+                </div>
                 <div class="victory-actions">
                     <button id="rematch-button" type="button" class="hot-action">Rematch</button>
                     <p id="rematch-status" class="rematch-status"></p>
