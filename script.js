@@ -79,6 +79,7 @@ const quantityOverflowOverlay = document.getElementById('quantity-overflow-overl
 const quantityOverflowCloseButton = document.getElementById('quantity-overflow-close');
 const quantityOverflowButtons = document.getElementById('quantity-overflow-buttons');
 const resolutionPanel = document.querySelector('.resolution-panel');
+const actionConsolePanel = document.getElementById('mobile-action-console');
 const gamePanel = document.querySelector('.game-panel');
 const logSidebar = document.querySelector('.log-sidebar');
 const eventToastLayer = document.getElementById('event-toast-layer');
@@ -90,6 +91,9 @@ const chatCloseButton = document.getElementById('chat-close-button');
 const chatMessagesList = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const chatSendButton = document.getElementById('chat-send-button');
+const mobilePlay = document.getElementById('mobile-play');
+const playToggleButton = document.getElementById('play-toggle-button');
+const playConsoleOverlay = document.getElementById('play-console-overlay');
 
 const state = {
     socket: null,
@@ -192,6 +196,41 @@ const pipPositionsByValue = {
 let audioContext;
 let diceRollAudio;
 let layoutSyncFrame = 0;
+let mobileActionConsoleOpen = false;
+
+function isMobileViewport() {
+    return window.matchMedia('(max-width: 840px)').matches;
+}
+
+function setMobileActionConsoleOpen(open) {
+    if (!actionConsolePanel || !playToggleButton || !playConsoleOverlay) {
+        return;
+    }
+
+    const allowMobileConsole = isMobileViewport() && !gameScreen.classList.contains('hidden');
+    mobileActionConsoleOpen = Boolean(open) && allowMobileConsole;
+
+    actionConsolePanel.classList.toggle('mobile-console-active', mobileActionConsoleOpen);
+    playConsoleOverlay.classList.toggle('hidden', !mobileActionConsoleOpen);
+    playToggleButton.classList.toggle('hidden', mobileActionConsoleOpen);
+    playToggleButton.setAttribute('aria-expanded', mobileActionConsoleOpen ? 'true' : 'false');
+}
+
+function updateMobilePlayVisibility() {
+    if (!mobilePlay || !playToggleButton) {
+        return;
+    }
+
+    const shouldShowToggle = state.isConnected && !gameScreen.classList.contains('hidden') && isMobileViewport();
+    mobilePlay.classList.toggle('hidden', !shouldShowToggle);
+
+    if (!shouldShowToggle) {
+        setMobileActionConsoleOpen(false);
+        return;
+    }
+
+    playToggleButton.disabled = false;
+}
 
 function syncDesktopSidebarHeight() {
     if (!gamePanel || !logSidebar) {
@@ -217,6 +256,7 @@ function scheduleDesktopSidebarHeightSync() {
     layoutSyncFrame = requestAnimationFrame(() => {
         layoutSyncFrame = 0;
         syncDesktopSidebarHeight();
+        updateMobilePlayVisibility();
     });
 }
 
@@ -777,11 +817,14 @@ function setLeaveState(enabled) {
 function showJoinScreen() {
     joinScreen.classList.remove('hidden');
     gameScreen.classList.add('hidden');
+    setMobileActionConsoleOpen(false);
+    updateMobilePlayVisibility();
 }
 
 function showGameScreen() {
     joinScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
+    updateMobilePlayVisibility();
 }
 
 function setStatus(message) {
@@ -975,7 +1018,7 @@ function createOpponentDiePlaceholder(borderColor) {
 function renderPlayers() {
     playersList.replaceChildren();
     refreshPlayerColorAssignments();
-    playersList.style.gridTemplateRows = 'repeat(6, minmax(0, 1fr))';
+    playersList.style.gridTemplateRows = isMobileViewport() ? '' : 'repeat(6, minmax(0, 1fr))';
     const shouldShowDiceInCards = !(state.phase === 'waiting' && state.roundNumber === 0);
 
     for (const player of state.players) {
@@ -1377,6 +1420,7 @@ function renderActionLog() {
 
 function updateChatVisibility() {
     roomChat.classList.toggle('hidden', !state.isConnected);
+    updateMobilePlayVisibility();
 }
 
 function renderChatUnreadBadge() {
@@ -2446,6 +2490,8 @@ function placeBid() {
         return;
     }
 
+    setMobileActionConsoleOpen(false);
+
     state.socket.send(
         JSON.stringify({
             type: 'bid',
@@ -2462,6 +2508,8 @@ function callDudo() {
         return;
     }
 
+    setMobileActionConsoleOpen(false);
+
     state.socket.send(JSON.stringify({ type: 'dudo' }));
     playTone(260, 125, 0.02, 'sawtooth');
 }
@@ -2470,6 +2518,8 @@ function callCalza() {
     if (!state.socket || state.socket.readyState !== WebSocket.OPEN || calzaButton.disabled) {
         return;
     }
+
+    setMobileActionConsoleOpen(false);
 
     openConfirmModal('Call Calza? This is high-risk and resolves immediately.', () => {
         state.socket.send(JSON.stringify({ type: 'calza' }));
@@ -2520,6 +2570,10 @@ function requestEndGame() {
 
 function toggleChatPanel() {
     setChatOpen(!state.chatOpen);
+}
+
+function toggleMobileActionConsole() {
+    setMobileActionConsoleOpen(!mobileActionConsoleOpen);
 }
 
 joinButton.addEventListener('click', connectToMatch);
@@ -2600,6 +2654,12 @@ rematchButton.addEventListener('click', requestRematch);
 chatToggleButton.addEventListener('click', toggleChatPanel);
 chatCloseButton.addEventListener('click', () => setChatOpen(false));
 chatSendButton.addEventListener('click', sendChatMessage);
+if (playToggleButton) {
+    playToggleButton.addEventListener('click', toggleMobileActionConsole);
+}
+if (playConsoleOverlay) {
+    playConsoleOverlay.addEventListener('click', () => setMobileActionConsoleOpen(false));
+}
 chatInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
         return;
@@ -2697,6 +2757,9 @@ addTouchFeedback(settingsToggle);
 addTouchFeedback(confirmAcceptButton);
 addTouchFeedback(chatToggleButton);
 addTouchFeedback(chatSendButton);
+if (playToggleButton) {
+    addTouchFeedback(playToggleButton);
+}
 
 window.addEventListener('load', maybeHideLoadingScreen);
 window.addEventListener('resize', scheduleDesktopSidebarHeightSync);

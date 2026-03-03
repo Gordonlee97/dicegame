@@ -1083,6 +1083,7 @@ button:focus-visible,
 #dudo-button,
 #rematch-button,
 #start-game-button,
+.play-toggle-button,
 .chat-toggle-button,
 #chat-send-button,
 #account-submit-button,
@@ -1242,17 +1243,23 @@ button:focus-visible,
 }
 
 #chat-send-button {
-    background: linear-gradient(180deg, #35c3f3 0%, #1d74e7 100%);
-    color: #fff;
+    background: linear-gradient(180deg, #eef6ff 0%, #dcecff 100%);
+    border-color: #b8d2f2;
+    color: #1e4f86;
     min-width: 78px;
 }
 
 #join-button:hover:not(:disabled),
 #bid-button:hover:not(:disabled),
-#account-submit-button:hover:not(:disabled),
-#chat-send-button:hover:not(:disabled) {
+#account-submit-button:hover:not(:disabled) {
     filter: none;
     background: linear-gradient(180deg, #e3f0ff 0%, #d0e5ff 100%);
+}
+
+#chat-send-button:hover:not(:disabled) {
+    filter: none;
+    background: linear-gradient(180deg, #e7f2ff 0%, #d4e8ff 100%);
+    border-color: #a9c8f0;
 }
 
 #rematch-button {
@@ -1410,11 +1417,45 @@ button:disabled {
     display: none;
 }
 
+.mobile-play {
+    display: none;
+}
+
+.play-console-overlay {
+    display: none;
+}
+
+.play-console-overlay.hidden {
+    display: none;
+}
+
+.play-toggle-button {
+    min-width: 126px;
+    min-height: 44px;
+    background: linear-gradient(180deg, #f5f9ff 0%, #ecf3ff 100%);
+    border-color: #c8d7ec;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    box-shadow: var(--shadow-sm);
+}
+
+.play-toggle-button.hidden {
+    display: none;
+}
+
+.play-toggle-button:hover:not(:disabled) {
+    border-color: #adc5e8;
+    background: linear-gradient(180deg, #edf4ff 0%, #e2eeff 100%);
+}
+
 .chat-toggle-button {
     min-width: 126px;
     min-height: 44px;
-    background: var(--surface);
-    border-color: var(--border);
+    background: linear-gradient(180deg, #f5f9ff 0%, #ecf3ff 100%);
+    border-color: #c8d7ec;
     color: var(--text);
     display: inline-flex;
     align-items: center;
@@ -1428,8 +1469,8 @@ button:disabled {
 }
 
 .chat-toggle-button:hover:not(:disabled) {
-    border-color: #a8c2e8;
-    background: var(--panel);
+    border-color: #adc5e8;
+    background: linear-gradient(180deg, #edf4ff 0%, #e2eeff 100%);
 }
 
 .chat-unread-badge {
@@ -2173,6 +2214,7 @@ body.dark-mode .event-toast.round {
 body.dark-mode .chat-panel,
 body.dark-mode .chat-message-item,
 body.dark-mode .chat-message-empty,
+body.dark-mode .play-toggle-button,
 body.dark-mode .chat-toggle-button,
 body.dark-mode .join-auth-shell,
 body.dark-mode .auth-left-pane,
@@ -2265,6 +2307,7 @@ body.dark-mode .join-auth-shell,
 body.dark-mode .auth-left-pane,
 body.dark-mode .auth-right-pane,
 body.dark-mode .chat-panel,
+body.dark-mode .play-toggle-button,
 body.dark-mode .chat-toggle-button {
     background: #1c212a;
     border-color: #343d4b;
@@ -2367,8 +2410,7 @@ body.dark-mode .face-option.selected:not(:disabled) .face-option-die {
 
 body.dark-mode #join-button,
 body.dark-mode #bid-button,
-body.dark-mode #account-submit-button,
-body.dark-mode #chat-send-button {
+body.dark-mode #account-submit-button {
     background: linear-gradient(180deg, #4f8fe8 0%, #3b78ce 100%);
     border-color: #6ea5f0;
     color: #f4f8ff;
@@ -2376,10 +2418,33 @@ body.dark-mode #chat-send-button {
 
 body.dark-mode #join-button:hover:not(:disabled),
 body.dark-mode #bid-button:hover:not(:disabled),
-body.dark-mode #account-submit-button:hover:not(:disabled),
-body.dark-mode #chat-send-button:hover:not(:disabled) {
+body.dark-mode #account-submit-button:hover:not(:disabled) {
     background: linear-gradient(180deg, #5a9af2 0%, #447fd6 100%);
     border-color: #7eb2f8;
+}
+
+body.dark-mode #chat-send-button {
+    background: linear-gradient(180deg, #365171 0%, #2d4460 100%);
+    border-color: #4f6b8d;
+    color: #e8f1ff;
+}
+
+body.dark-mode #chat-send-button:hover:not(:disabled) {
+    background: linear-gradient(180deg, #3d5c80 0%, #34506f 100%);
+    border-color: #6382aa;
+}
+
+body.dark-mode .play-toggle-button,
+body.dark-mode .chat-toggle-button {
+    background: linear-gradient(180deg, #24354d 0%, #1d2d42 100%);
+    border-color: #3c5579;
+    color: #e9f1ff;
+}
+
+body.dark-mode .play-toggle-button:hover:not(:disabled),
+body.dark-mode .chat-toggle-button:hover:not(:disabled) {
+    background: linear-gradient(180deg, #2a3e59 0%, #22354c 100%);
+    border-color: #4f6e97;
 }
 
 body.dark-mode #calza-button {
@@ -2744,7 +2809,43 @@ body.dark-mode .victory-message {
     }
 
     .priority-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .priority-card {
+        padding: 8px 10px;
+    }
+
+    .card-kicker {
+        font-size: 0.7rem;
+    }
+
+    .card-value {
+        margin-top: 6px;
+        font-size: 0.98rem;
+    }
+
+    #last-bid {
+        font-size: 1.03rem;
+    }
+
+    #last-bid .inline-bid-qty {
+        font-size: 1.06em;
+    }
+
+    #last-bid .inline-bid-die {
+        width: 24px;
+        height: 24px;
+    }
+
+    .round-card #round-number {
+        font-size: 1.2rem;
+    }
+
+    .card-meta {
+        margin-top: 6px;
+        font-size: 0.76rem;
     }
 
     .settings-grid {
@@ -2770,6 +2871,19 @@ body.dark-mode .victory-message {
         min-height: 56px;
         padding: 7px 9px;
         height: auto;
+    }
+
+    .players-sidebar {
+        height: auto;
+        align-self: start;
+        flex: 0 0 auto;
+    }
+
+    #players-list {
+        flex: none;
+        grid-template-rows: none;
+        gap: 6px;
+        align-content: start;
     }
 
     .players-sidebar-actions {
@@ -2805,8 +2919,89 @@ body.dark-mode .victory-message {
         bottom: 10px;
     }
 
+    .mobile-play {
+        position: fixed;
+        left: 10px;
+        bottom: 10px;
+        z-index: 56;
+        display: grid;
+        justify-items: start;
+        gap: 8px;
+    }
+
+    .mobile-play.hidden {
+        display: none;
+    }
+
+    .play-console-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 15, 28, 0.35);
+        z-index: 66;
+        display: block;
+    }
+
     .chat-panel {
         width: min(360px, calc(100vw - 20px));
+    }
+
+    .actions-panel.vertical-console {
+        display: none;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 67;
+        display: grid;
+        max-height: min(72vh, 560px);
+        overflow-y: auto;
+        box-shadow: var(--shadow-lg);
+        padding: 7px 9px;
+        gap: 6px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .section-heading-row {
+        margin-bottom: 4px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .bid-controls {
+        gap: 6px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .bid-group {
+        padding: 6px 7px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .group-label {
+        margin-bottom: 4px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .option-buttons,
+    .actions-panel.vertical-console.mobile-console-active #quantity-buttons {
+        gap: 6px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .action-buttons {
+        margin-top: 6px;
+        row-gap: 6px;
+        column-gap: 6px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .hot-action,
+    .actions-panel.vertical-console.mobile-console-active #calza-button,
+    .actions-panel.vertical-console.mobile-console-active #dudo-button {
+        min-height: 36px;
+        font-size: 0.82rem;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .action-helper {
+        margin-top: 2px;
+        min-height: 0;
+        font-size: 0.77rem;
+        line-height: 1.24;
     }
 }
 

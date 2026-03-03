@@ -110,7 +110,7 @@
                         <ul id="players-list"></ul>
                     </aside>
 
-                    <section class="actions-panel vertical-console" aria-label="Bid controls">
+                    <section id="mobile-action-console" class="actions-panel vertical-console" aria-label="Bid controls">
                         <div class="section-heading-row">
                             <h2>Action Console</h2>
                         </div>
@@ -170,6 +170,11 @@
                         <button id="chat-send-button" type="button">Send</button>
                     </div>
                 </section>
+            </section>
+
+            <div id="play-console-overlay" class="play-console-overlay hidden" aria-hidden="true"></div>
+            <section id="mobile-play" class="mobile-play hidden" aria-label="Turn actions">
+                <button id="play-toggle-button" type="button" class="play-toggle-button" aria-expanded="false" aria-controls="mobile-action-console">🎲 Play</button>
             </section>
         </section>
 
