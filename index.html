@@ -102,6 +102,10 @@
                         <p class="card-value"><span id="round-number">-</span></p>
                         <p class="card-meta">Palifico: <span id="palifico-indicator">No</span></p>
                     </article>
+                    <article class="priority-card room-code-card">
+                        <p class="card-kicker">Room Code</p>
+                        <p class="card-value room-code-value"><span id="lobby-code">-</span></p>
+                    </article>
                 </div>
 
                 <section class="table-row" aria-label="Players and controls">
@@ -110,7 +114,7 @@
                         <ul id="players-list"></ul>
                     </aside>
 
-                    <section class="actions-panel vertical-console" aria-label="Bid controls">
+                    <section id="mobile-action-console" class="actions-panel vertical-console" aria-label="Bid controls">
                         <div class="section-heading-row">
                             <h2>Action Console</h2>
                         </div>
@@ -143,6 +147,10 @@
             </section>
 
             <aside class="log-sidebar" aria-label="Action log">
+                <article class="priority-card room-code-card mobile-room-code-card">
+                    <p class="card-kicker">Room Code</p>
+                    <p class="card-value room-code-value"><span id="lobby-code-mobile">-</span></p>
+                </article>
                 <section class="log-panel">
                     <h2>🧾 Action Log</h2>
                     <ul id="action-log"></ul>
@@ -150,7 +158,6 @@
                 <div class="log-footer-actions">
                     <button id="end-game-button" type="button" class="log-end-game-button hidden">End Game</button>
                     <button id="leave-button" type="button" class="log-leave-button">Leave</button>
-                    <p class="lobby-chip log-room-code">Room Code: <span id="lobby-code">-</span></p>
                 </div>
             </aside>
 
@@ -170,6 +177,11 @@
                         <button id="chat-send-button" type="button">Send</button>
                     </div>
                 </section>
+            </section>
+
+            <div id="play-console-overlay" class="play-console-overlay hidden" aria-hidden="true"></div>
+            <section id="mobile-play" class="mobile-play hidden" aria-label="Turn actions">
+                <button id="play-toggle-button" type="button" class="play-toggle-button" aria-expanded="false" aria-controls="mobile-action-console">🎲 Play</button>
             </section>
         </section>
 

@@ -273,3 +273,123 @@ test('eliminated players stay in room as spectators and still appear in reveal',
     assert.equal(game.round.winnerPlayerId, bob.id);
     assert.ok(game.round.lastResolution.revealedDice.some(item => item.playerId === alice.id));
 });
+
+test('late joiners enter as spectators and can opt in with join_game', () => {
+    const game = createGame([
+        [2, 2, 3, 4, 5],
+        [1, 1, 6, 6, 6],
+        [3, 3, 4, 4, 5]
+    ]);
+
+    addPlayers(game, ['Alice', 'Bob']);
+    startGame(game, 'Alice');
+
+    let result = game.addPlayer({ id: 'id-Cara', name: 'Cara', ws: { id: 'ws-Cara' } });
+    assert.equal(result.ok, true);
+
+    const cara = player(game, 'Cara');
+    assert.ok(cara);
+    assert.equal(cara.isSpectator, true);
+    assert.equal(cara.diceCount, 0);
+    assert.deepEqual(cara.currentDice, []);
+
+    result = game.handleJoinGame(cara);
+    assert.equal(result.ok, true);
+    assert.equal(cara.isSpectator, false);
+    assert.equal(cara.diceCount, 5);
+    assert.equal(cara.currentDice.length, 5);
+});
+
+test('dudo resolution keeps challenged round palifico flag when next round becomes palifico', () => {
+    const game = createGame([
+        [2, 5],
+        [3, 4],
+        [6, 6],
+        [2]
+    ]);
+
+    addPlayers(game, ['Alice', 'Bob']);
+
+    const alice = player(game, 'Alice');
+    const bob = player(game, 'Bob');
+    alice.diceCount = 2;
+    bob.diceCount = 2;
+
+    game.startRound(0, false);
+
+    let result = game.handleBid(alice, new Bid(1, 2, alice.id));
+    assert.equal(result.ok, true);
+
+    result = game.handleDudo(bob);
+    assert.equal(result.ok, true);
+
+    assert.equal(game.round.palificoRound, true);
+    assert.equal(game.round.lastResolution.palificoRound, false);
+});
+
+test('calza resolution keeps challenged round palifico flag when next round becomes palifico', () => {
+    const game = createGame([
+        [2, 2],
+        [3, 3],
+        [4, 4],
+        [2, 2],
+        [3, 3],
+        [4]
+    ], { minPlayersToStart: 3 });
+
+    addPlayers(game, ['Alice', 'Bob', 'Cara']);
+
+    const alice = player(game, 'Alice');
+    const bob = player(game, 'Bob');
+    const cara = player(game, 'Cara');
+    alice.diceCount = 2;
+    bob.diceCount = 2;
+    cara.diceCount = 2;
+
+    game.startRound(0, false);
+
+    let result = game.handleBid(alice, new Bid(3, 6, alice.id));
+    assert.equal(result.ok, true);
+
+    result = game.handleCalza(cara);
+    assert.equal(result.ok, true);
+
+    assert.equal(game.round.palificoRound, true);
+    assert.equal(game.round.lastResolution.palificoRound, false);
+});
+
+test('palifico resolution matching mask excludes ones for non-one bid faces', () => {
+    const game = createGame([
+        [1],
+        [6],
+        [2],
+        [3]
+    ]);
+
+    addPlayers(game, ['Alice', 'Bob']);
+
+    const alice = player(game, 'Alice');
+    const bob = player(game, 'Bob');
+    alice.diceCount = 1;
+    bob.diceCount = 1;
+
+    game.startRound(0, true);
+
+    let result = game.handleBid(alice, new Bid(1, 6, alice.id));
+    assert.equal(result.ok, true);
+
+    result = game.handleDudo(bob);
+    assert.equal(result.ok, true);
+
+    const resolution = game.round.lastResolution;
+    assert.equal(resolution.palificoRound, true);
+    assert.equal(resolution.actualCount, 1);
+
+    const aliceReveal = resolution.revealedDice.find(item => item.playerId === alice.id);
+    const bobReveal = resolution.revealedDice.find(item => item.playerId === bob.id);
+
+    assert.ok(aliceReveal);
+    assert.ok(bobReveal);
+    assert.deepEqual(aliceReveal.matchingMask, [false]);
+    assert.deepEqual(bobReveal.matchingMask, [true]);
+});

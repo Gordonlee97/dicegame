@@ -330,6 +330,11 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'join_game') {
+                    gameManager.handleJoinGame(ws);
+                    return;
+                }
+
                 if (data.type === 'end_game') {
                     gameManager.handleEndGame(ws);
                     return;

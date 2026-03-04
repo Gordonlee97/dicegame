@@ -154,6 +154,55 @@ test('end_game resets room to clean waiting state and restores starting dice', (
     assert.equal(roomSettings.turnTimerEnabled, false);
 });
 
+test('join_game promotes mid-game spectator to active player', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+    const wsCara = { id: 'ws-cara' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'spectator-room' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'spectator-room' });
+    manager.handleStartGame(wsAlice);
+
+    manager.join(wsCara, { type: 'join', name: 'Cara', roomId: 'spectator-room' });
+
+    const game = manager.games.get('spectator-room');
+    const cara = game.players.find(player => player.name === 'Cara');
+    assert.ok(cara);
+    assert.equal(cara.isSpectator, true);
+    assert.equal(cara.diceCount, 0);
+
+    manager.handleJoinGame(wsCara);
+
+    assert.equal(cara.isSpectator, false);
+    assert.equal(cara.diceCount, 5);
+    assert.equal(cara.currentDice.length, 5);
+});
+
+test('seventh joiner is rejected when room already has six players', () => {
+    const sent = [];
+    const manager = createManager(sent);
+
+    const sockets = Array.from({ length: 7 }, (_, index) => ({ id: `ws-${index + 1}` }));
+    for (let index = 0; index < 6; index += 1) {
+        manager.join(sockets[index], { type: 'join', name: `Player${index + 1}`, roomId: 'cap-room' });
+    }
+
+    const game = manager.games.get('cap-room');
+    assert.ok(game);
+    assert.equal(game.players.length, 6);
+
+    manager.join(sockets[6], { type: 'join', name: 'Player7', roomId: 'cap-room' });
+
+    assert.equal(game.players.length, 6);
+    assert.equal(manager.clientToRoom.has(sockets[6]), false);
+    const latestError = sent.findLast(entry => entry.ws === sockets[6] && entry.payload.type === 'error');
+    assert.ok(latestError);
+    assert.match(latestError.payload.message, /room is full|max 6/i);
+});
+
 test('chat message is broadcast only to players in same room and included in history for new joiner', () => {
     const sent = [];
     const manager = createManager(sent);

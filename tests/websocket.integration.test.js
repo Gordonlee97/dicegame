@@ -367,6 +367,60 @@ test('websocket bid then dudo resolves and advances round', async () => {
     }
 });
 
+test('websocket late joiner starts spectating and can join game explicitly', async () => {
+    const roomId = `ws-spectator-${Date.now()}`;
+    const alice = await connectAndJoin(server.wsUrl, 'Alice', roomId);
+    const bob = await connectAndJoin(server.wsUrl, 'Bob', roomId);
+    let cara;
+
+    try {
+        await alice.client.waitFor(
+            message => message.type === 'state' && message.phase === 'waiting' && message.players.length === 2
+        );
+
+        alice.client.send({ type: 'start_game' });
+
+        await alice.client.waitFor(
+            message => message.type === 'state' && message.phase === 'bidding' && message.players.length === 2
+        );
+
+        cara = await connectAndJoin(server.wsUrl, 'Cara', roomId);
+
+        const spectatorState = await cara.client.waitFor(
+            message => message.type === 'state'
+                && message.phase === 'bidding'
+                && Array.isArray(message.players)
+                && message.players.some(player => player.id === cara.playerId && player.isSpectator === true)
+        );
+
+        const caraBeforeJoin = spectatorState.players.find(player => player.id === cara.playerId);
+        assert.ok(caraBeforeJoin);
+        assert.equal(caraBeforeJoin.isSpectator, true);
+        assert.equal(caraBeforeJoin.diceCount, 0);
+
+        cara.client.send({ type: 'join_game' });
+
+        const joinedState = await cara.client.waitFor(
+            message => message.type === 'state'
+                && message.phase === 'bidding'
+                && Array.isArray(message.players)
+                && message.players.some(player => player.id === cara.playerId && player.isSpectator === false)
+        );
+
+        const caraAfterJoin = joinedState.players.find(player => player.id === cara.playerId);
+        assert.ok(caraAfterJoin);
+        assert.equal(caraAfterJoin.isSpectator, false);
+        assert.equal(caraAfterJoin.diceCount, 5);
+        assert.equal(joinedState.yourDice.length, 5);
+    } finally {
+        await Promise.all([
+            alice.client.close(),
+            bob.client.close(),
+            cara ? cara.client.close() : Promise.resolve()
+        ]);
+    }
+});
+
 test('websocket room chat broadcasts only within same room', async () => {
     const roomA = `ws-chat-a-${Date.now()}`;
     const roomB = `ws-chat-b-${Date.now()}`;
