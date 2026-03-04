@@ -2844,8 +2844,12 @@ body.dark-mode .victory-message {
     }
 
     .priority-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
+    }
+
+    .priority-grid > .priority-card {
+        min-width: 0;
     }
 
     .priority-grid .room-code-card {
@@ -2921,6 +2925,8 @@ body.dark-mode .victory-message {
         min-height: 56px;
         padding: 7px 9px;
         height: auto;
+        min-width: 0;
+        overflow: hidden;
     }
 
     .players-sidebar {
@@ -2934,6 +2940,40 @@ body.dark-mode .victory-message {
         grid-template-rows: none;
         gap: 6px;
         align-content: start;
+        min-width: 0;
+    }
+
+    .player-info,
+    .player-dice-row,
+    .player-dice-live,
+    .player-dice-placeholders {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .player-dice-row {
+        padding-right: 46px;
+    }
+
+    .player-dice-live,
+    .player-dice-placeholders {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .player-die-placeholder,
+    .player-dice-live .player-card-die {
+        width: clamp(38px, 10vw, 44px);
+        height: clamp(38px, 10vw, 44px);
+    }
+
+    .player-dice-live .player-card-die {
+        padding: 3px;
+    }
+
+    .player-dice-live .player-card-die .pip {
+        width: 7px;
+        height: 7px;
     }
 
     .players-sidebar-actions {
@@ -2947,6 +2987,8 @@ body.dark-mode .victory-message {
 
     #action-log li {
         padding: 7px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     .die {
@@ -3084,6 +3126,74 @@ body.dark-mode .victory-message {
 
     .actions-panel.vertical-console.mobile-console-active .action-helper {
         display: none;
+    }
+}
+
+@media (max-width: 430px) {
+    body {
+        padding: 8px;
+    }
+
+    main {
+        padding: 10px;
+        border-radius: 12px;
+    }
+
+    .game-panel,
+    .players-sidebar,
+    .log-panel,
+    .priority-card {
+        padding: 8px;
+    }
+
+    .priority-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 7px;
+    }
+
+    .turn-banner {
+        font-size: 0.88rem;
+        padding: 7px 9px;
+    }
+
+    #players-list li {
+        padding: 6px 7px;
+    }
+
+    .player-dice-row {
+        padding-right: 42px;
+    }
+
+    .player-die-placeholder,
+    .player-dice-live .player-card-die {
+        width: 36px;
+        height: 36px;
+    }
+
+    .player-dice-live .player-card-die .pip {
+        width: 6px;
+        height: 6px;
+    }
+
+    .mobile-room-code-card {
+        min-height: 64px;
+        margin-bottom: 6px;
+    }
+
+    #action-log {
+        max-height: 220px;
+        font-size: 0.78rem;
+    }
+
+    .chat-panel {
+        width: min(340px, calc(100vw - 16px));
+    }
+
+    .actions-panel.vertical-console.mobile-console-active {
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        max-height: min(70vh, 540px);
     }
 }
 
