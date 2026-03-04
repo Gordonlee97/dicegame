@@ -688,6 +688,26 @@ class GameManager {
         this.broadcastState(context.game);
     }
 
+    handleJoinGame(ws) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        const result = context.game.handleJoinGame(context.player);
+        if (!result.ok) {
+            this.send(ws, { type: 'error', message: result.error });
+            return;
+        }
+
+        this.appendMatchAction(context.game, 'join_game', context.player, {
+            roundNumber: context.game.round.roundNumber,
+            phase: context.game.round.phase
+        });
+
+        this.broadcastState(context.game);
+    }
+
     handleEndGame(ws) {
         const context = this.getContext(ws);
         if (!context) {

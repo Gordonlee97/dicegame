@@ -36,6 +36,7 @@ const lastBidText = document.getElementById('last-bid');
 const roundNumberText = document.getElementById('round-number');
 const palificoIndicatorText = document.getElementById('palifico-indicator');
 const lobbyCodeText = document.getElementById('lobby-code');
+const lobbyCodeMobileText = document.getElementById('lobby-code-mobile');
 const actionLogList = document.getElementById('action-log');
 const resolutionText = document.getElementById('resolution-text');
 const resolutionModal = document.getElementById('resolution-modal');
@@ -132,7 +133,6 @@ const state = {
     chatUnreadCount: 0,
     chatOpen: false,
     playerColorByKey: {},
-    nextPlayerColorIndex: 0,
     turnTimerKey: '',
     turnTimerStartedAt: 0,
     turnTimerHasAlerted: false,
@@ -197,6 +197,7 @@ let audioContext;
 let diceRollAudio;
 let layoutSyncFrame = 0;
 let mobileActionConsoleOpen = false;
+let turnReminderPulseTimeout = 0;
 
 function isMobileViewport() {
     return window.matchMedia('(max-width: 840px)').matches;
@@ -221,7 +222,7 @@ function updateMobilePlayVisibility() {
         return;
     }
 
-    const shouldShowToggle = state.isConnected && !gameScreen.classList.contains('hidden') && isMobileViewport();
+    const shouldShowToggle = state.isConnected && !gameScreen.classList.contains('hidden') && isMobileViewport() && !state.chatOpen;
     mobilePlay.classList.toggle('hidden', !shouldShowToggle);
 
     if (!shouldShowToggle) {
@@ -686,6 +687,34 @@ function maybeAnimateYourTurn(previousTurnPlayerId, previousRoundNumber) {
 
     showEventToast('Your turn!', 'turn', { holdMs: 2400, exitMs: 700 });
     playTurnAlertCue();
+    triggerTurnReminderPulse();
+}
+
+function triggerTurnReminderPulse() {
+    const targets = [actionConsolePanel, playToggleButton];
+
+    for (const target of targets) {
+        if (!target) {
+            continue;
+        }
+
+        target.classList.remove('turn-reminder-pulse');
+        void target.offsetWidth;
+        target.classList.add('turn-reminder-pulse');
+    }
+
+    if (turnReminderPulseTimeout) {
+        clearTimeout(turnReminderPulseTimeout);
+    }
+
+    turnReminderPulseTimeout = setTimeout(() => {
+        for (const target of targets) {
+            if (target) {
+                target.classList.remove('turn-reminder-pulse');
+            }
+        }
+        turnReminderPulseTimeout = 0;
+    }, 1700);
 }
 
 function maybeAnimateDudoCall(resolution) {
@@ -846,7 +875,13 @@ function updateWaitingStartNotice() {
 }
 
 function renderLobbyCode() {
-    lobbyCodeText.textContent = state.roomId || '-';
+    const code = state.roomId || '-';
+    if (lobbyCodeText) {
+        lobbyCodeText.textContent = code;
+    }
+    if (lobbyCodeMobileText) {
+        lobbyCodeMobileText.textContent = code;
+    }
 }
 
 function getWsUrl() {
@@ -878,13 +913,25 @@ function getTotalDiceInRoom() {
     return state.players.reduce((sum, player) => sum + Number(player.diceCount || 0), 0);
 }
 
+function isPlayerSpectator(player) {
+    return Boolean(player && player.isSpectator);
+}
+
+function getSelfPlayer() {
+    return state.players.find(player => player.id === state.playerId) || null;
+}
+
 function getActivePlayers() {
-    return state.players.filter(player => Number(player.diceCount || 0) > 0);
+    return state.players.filter(player => !isPlayerSpectator(player) && Number(player.diceCount || 0) > 0);
 }
 
 function isSelfEliminated() {
-    const self = state.players.find(player => player.id === state.playerId);
-    return Boolean(self) && Number(self.diceCount || 0) <= 0;
+    const self = getSelfPlayer();
+    return Boolean(self) && !isPlayerSpectator(self) && Number(self.diceCount || 0) <= 0;
+}
+
+function isSelfSpectator() {
+    return isPlayerSpectator(getSelfPlayer());
 }
 
 function getCanAct() {
@@ -1025,7 +1072,8 @@ function renderPlayers() {
         const item = document.createElement('li');
         const isSelf = player.id === state.playerId;
         const isTurn = player.id === state.currentTurnPlayerId;
-        const isEliminated = Number(player.diceCount || 0) <= 0;
+        const isSpectator = isPlayerSpectator(player);
+        const isEliminated = !isSpectator && Number(player.diceCount || 0) <= 0;
         const playerColor = getPlayerColor(player.name, player.id);
 
         if (isTurn) {
@@ -1063,6 +1111,11 @@ function renderPlayers() {
             eliminatedTag.className = 'player-eliminated-tag';
             eliminatedTag.textContent = '(out)';
             name.appendChild(eliminatedTag);
+        } else if (isSpectator) {
+            const spectatorTag = document.createElement('span');
+            spectatorTag.className = 'player-eliminated-tag';
+            spectatorTag.textContent = '(spectating)';
+            name.appendChild(spectatorTag);
         }
 
         const playerInfo = document.createElement('div');
@@ -1106,7 +1159,7 @@ function renderPlayers() {
 
                 const timer = document.createElement('span');
                 timer.className = 'player-turn-timer';
-                const isTurnTimerActive = state.ui.turnTimerEnabled && isTurn && state.phase === 'bidding' && !isEliminated;
+                const isTurnTimerActive = state.ui.turnTimerEnabled && isTurn && state.phase === 'bidding' && !isEliminated && !isSpectator;
                 timer.classList.toggle('active', isTurnTimerActive);
                 if (playerColor) {
                     timer.style.setProperty('--timer-elapsed', toTranslucentColor(playerColor, 0.9));
@@ -1247,6 +1300,22 @@ function getPlayerColorKey(name, playerId = '') {
     return `name:${normalizedName}`;
 }
 
+function getFallbackPaletteColor(seed) {
+    const normalizedSeed = String(seed || '').trim().toLowerCase();
+    if (!normalizedSeed) {
+        return '';
+    }
+
+    let hash = 5381;
+    for (let index = 0; index < normalizedSeed.length; index += 1) {
+        hash = ((hash << 5) + hash) + normalizedSeed.charCodeAt(index);
+        hash |= 0;
+    }
+
+    const paletteIndex = Math.abs(hash) % playerNameColorPalette.length;
+    return playerNameColorPalette[paletteIndex];
+}
+
 function ensurePlayerColor(name, playerId = '') {
     const colorKey = getPlayerColorKey(name, playerId);
 
@@ -1254,9 +1323,8 @@ function ensurePlayerColor(name, playerId = '') {
         return;
     }
 
-    const color = playerNameColorPalette[state.nextPlayerColorIndex % playerNameColorPalette.length];
+    const color = getFallbackPaletteColor(colorKey) || playerNameColorPalette[0];
     state.playerColorByKey[colorKey] = color;
-    state.nextPlayerColorIndex += 1;
 }
 
 function getPlayerColor(name, playerId = '') {
@@ -1270,9 +1338,23 @@ function getPlayerColor(name, playerId = '') {
 }
 
 function refreshPlayerColorAssignments() {
-    for (const player of state.players) {
-        ensurePlayerColor(player.name, player.id);
+    const nextAssignments = {};
+
+    for (let index = 0; index < state.players.length; index += 1) {
+        const player = state.players[index];
+        const color = playerNameColorPalette[index % playerNameColorPalette.length];
+        const idKey = getPlayerColorKey(player.name, player.id);
+        const nameKey = getPlayerColorKey(player.name);
+        nextAssignments[idKey] = color;
+        if (!nextAssignments[nameKey]) {
+            nextAssignments[nameKey] = color;
+        }
     }
+
+    state.playerColorByKey = {
+        ...state.playerColorByKey,
+        ...nextAssignments
+    };
 }
 
 function createColoredPlayerNameNode(name, playerId = '') {
@@ -1474,6 +1556,7 @@ function setChatOpen(open) {
     chatPanel.classList.toggle('hidden', !state.chatOpen);
     chatToggleButton.classList.toggle('hidden', state.chatOpen);
     chatToggleButton.setAttribute('aria-expanded', state.chatOpen ? 'true' : 'false');
+    updateMobilePlayVisibility();
 
     if (state.chatOpen) {
         state.chatUnreadCount = 0;
@@ -1878,6 +1961,9 @@ function openDudoRevealModal(resolution) {
     modalCaller.textContent = '';
     modalSummary.classList.add('hidden');
     modalMatchCount.classList.add('hidden');
+    const resolutionPalificoRound = typeof resolution.palificoRound === 'boolean'
+        ? resolution.palificoRound
+        : Boolean(state.palificoRound);
 
     let highlightedCount = 0;
 
@@ -1893,8 +1979,14 @@ function openDudoRevealModal(resolution) {
         const diceWrap = document.createElement('div');
         diceWrap.className = 'reveal-dice';
 
-        for (const value of playerDice.dice) {
-            const isMatch = isMatchingDieForBidFace(value, resolution.bid.face, Boolean(state.palificoRound));
+        const hasMatchingMask = Array.isArray(playerDice.matchingMask)
+            && playerDice.matchingMask.length === playerDice.dice.length;
+
+        for (let index = 0; index < playerDice.dice.length; index += 1) {
+            const value = playerDice.dice[index];
+            const isMatch = hasMatchingMask
+                ? Boolean(playerDice.matchingMask[index])
+                : isMatchingDieForBidFace(value, resolution.bid.face, resolutionPalificoRound);
             if (isMatch) {
                 highlightedCount += 1;
             }
@@ -1985,15 +2077,17 @@ function closeConfirmModal() {
 function updateActionAvailability() {
     const canAct = getCanAct();
     const showStartGame = state.isConnected && state.phase === 'waiting' && state.roundNumber === 0;
+    const showJoinGame = state.isConnected && isSelfSpectator() && state.roundNumber > 0 && state.phase !== 'game_over';
     const showHeaderRematch = state.isConnected && state.phase === 'game_over';
     const canEndGame = state.isConnected && (state.phase === 'bidding' || state.phase === 'game_over' || state.roundNumber > 0);
     const canStartGame = showStartGame && getActivePlayers().length >= 2;
+    const canJoinGame = showJoinGame;
     const canHeaderRematch = showHeaderRematch && !state.rematchRequested;
     const canChat = state.isConnected && Boolean(state.roomId);
 
-    startGameButton.classList.toggle('hidden', !(showStartGame || showHeaderRematch));
-    startGameButton.textContent = showHeaderRematch ? 'Rematch' : 'Start Game';
-    startGameButton.disabled = showHeaderRematch ? !canHeaderRematch : !canStartGame;
+    startGameButton.classList.toggle('hidden', !(showStartGame || showHeaderRematch || showJoinGame));
+    startGameButton.textContent = showHeaderRematch ? 'Rematch' : (showJoinGame ? 'Join Game' : 'Start Game');
+    startGameButton.disabled = showHeaderRematch ? !canHeaderRematch : (showJoinGame ? !canJoinGame : !canStartGame);
     endGameButton.classList.remove('hidden');
     endGameButton.disabled = !canEndGame;
     chatToggleButton.disabled = !canChat;
@@ -2029,10 +2123,14 @@ function updateActionAvailability() {
                 ? (canStartGame
                     ? 'Everyone is in? Any player can press Start Game.'
                     : 'Waiting for at least 2 players to enable Start Game.')
-                : 'Waiting for enough players to resume bidding.')
-            : canCalza
-                ? 'Wait for your turn. You can still call Calza.'
-                : 'Wait for your turn.';
+                : (showJoinGame
+                    ? 'You are spectating this match. Press Join Game to enter.'
+                    : 'Waiting for enough players to resume bidding.'))
+            : (showJoinGame
+                ? 'You are spectating this match. Press Join Game to enter.'
+                : (canCalza
+                    ? 'Wait for your turn. You can still call Calza.'
+                    : 'Wait for your turn.'));
         return;
     }
 
@@ -2093,6 +2191,11 @@ function updateStatusFromState() {
         }
 
         setStatus(state.lastBid ? 'Your turn: bid, call Calza, or call Dudo.' : 'Your turn: place the opening bid.');
+        return;
+    }
+
+    if (isSelfSpectator() && state.phase !== 'game_over') {
+        setStatus('👀 You are spectating. Press Join Game to enter this match.');
         return;
     }
 
@@ -2207,6 +2310,8 @@ function applyStateUpdate(payload) {
     syncTurnTimerState();
 
     if (previousPhase === 'game_over' && state.phase !== 'game_over') {
+        state.lastSeenResolutionKey = null;
+        state.lastResolution = null;
         state.lastSeenWinnerPlayerId = null;
         state.pendingVictoryWinner = null;
         state.pendingRoundToastMessage = null;
@@ -2297,6 +2402,7 @@ function applyStateUpdate(payload) {
     if (isSafeToFlushDeferredYourTurn) {
         showEventToast('Your turn!', 'turn', { holdMs: 2400, exitMs: 700 });
         playTurnAlertCue();
+        triggerTurnReminderPulse();
         state.pendingYourTurnToast = false;
     }
 
@@ -2439,7 +2545,6 @@ async function connectToMatch() {
         state.previousDiceKey = '';
         state.previousBidKey = '';
         state.playerColorByKey = {};
-        state.nextPlayerColorIndex = 0;
         state.socket = null;
 
         updateWaitingStartNotice();
@@ -2548,9 +2653,23 @@ function requestStartGame() {
     playTone(680, 95, 0.015, 'triangle');
 }
 
+function requestJoinGame() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN || startGameButton.disabled) {
+        return;
+    }
+
+    state.socket.send(JSON.stringify({ type: 'join_game' }));
+    playTone(620, 90, 0.014, 'triangle');
+}
+
 function handlePrimaryHeaderButtonClick() {
     if (state.phase === 'game_over') {
         requestRematch();
+        return;
+    }
+
+    if (isSelfSpectator() && state.roundNumber > 0) {
+        requestJoinGame();
         return;
     }
 

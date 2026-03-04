@@ -35,7 +35,7 @@ class PerudoGame {
     }
 
     isActivePlayer(player) {
-        return Boolean(player) && Number(player.diceCount) > 0;
+        return Boolean(player) && !player.isSpectator && Number(player.diceCount) > 0;
     }
 
     getActivePlayers() {
@@ -134,7 +134,7 @@ class PerudoGame {
         this.resolutionEventId = 0;
 
         for (const roomPlayer of this.players) {
-            roomPlayer.diceCount = this.startingDicePerPlayer;
+            roomPlayer.diceCount = roomPlayer.isSpectator ? 0 : this.startingDicePerPlayer;
             roomPlayer.currentDice = [];
         }
 
@@ -177,14 +177,41 @@ class PerudoGame {
         }
 
         const joiningDuringRound = this.round.phase === 'bidding';
+        const joiningAfterGameStarted = this.round.roundNumber > 0;
+        const joiningAsSpectator = joiningAfterGameStarted;
 
         this.players.push({
             ...player,
-            diceCount: this.startingDicePerPlayer,
-            currentDice: joiningDuringRound ? this.rollDice(this.startingDicePerPlayer) : []
+            isSpectator: joiningAsSpectator,
+            diceCount: joiningAsSpectator ? 0 : this.startingDicePerPlayer,
+            currentDice: joiningDuringRound && !joiningAsSpectator ? this.rollDice(this.startingDicePerPlayer) : []
         });
 
-        this.addLog(joiningDuringRound ? `${player.name} joined the room mid-round.` : `${player.name} joined the room.`);
+        this.addLog(joiningAsSpectator
+            ? `${player.name} joined as a spectator.`
+            : (joiningDuringRound ? `${player.name} joined the room mid-round.` : `${player.name} joined the room.`));
+        this.beginGameIfReady();
+
+        return { ok: true };
+    }
+
+    handleJoinGame(player) {
+        if (!player || !player.isSpectator) {
+            return { ok: false, error: 'You are already in the game.' };
+        }
+
+        if (this.getActivePlayerCount() >= this.maxPlayersPerRoom) {
+            return { ok: false, error: `All ${this.maxPlayersPerRoom} player seats are filled. Wait for an open seat.` };
+        }
+
+        if (this.round.phase === 'game_over') {
+            return { ok: false, error: 'Cannot join during game over. Wait for a new game.' };
+        }
+
+        player.isSpectator = false;
+        player.diceCount = this.startingDicePerPlayer;
+        player.currentDice = this.round.phase === 'bidding' ? this.rollDice(this.startingDicePerPlayer) : [];
+        this.addLog(`${player.name} joined the current game.`);
         this.beginGameIfReady();
 
         return { ok: true };
@@ -252,7 +279,8 @@ class PerudoGame {
                 id: item.id,
                 name: item.name,
                 diceCount: item.diceCount,
-                isEliminated: item.diceCount <= 0
+                isSpectator: Boolean(item.isSpectator),
+                isEliminated: !item.isSpectator && item.diceCount <= 0
             })),
             currentTurnPlayerId: currentTurnPlayer ? currentTurnPlayer.id : null,
             lastBid: this.round.lastBid
@@ -315,6 +343,32 @@ class PerudoGame {
         return { ok: true };
     }
 
+    isMatchingDieForResolution(dieValue, bidFace, palificoRound) {
+        if (palificoRound) {
+            return dieValue === bidFace;
+        }
+
+        if (bidFace === 1) {
+            return dieValue === 1;
+        }
+
+        return dieValue === bidFace || dieValue === 1;
+    }
+
+    buildRevealedDiceForResolution(bid, palificoRound) {
+        return this.players.map(player => {
+            const dice = [...player.currentDice];
+            const matchingMask = dice.map(value => this.isMatchingDieForResolution(value, bid.face, palificoRound));
+
+            return {
+                playerId: player.id,
+                playerName: player.name,
+                dice,
+                matchingMask
+            };
+        });
+    }
+
     resolveAfterDudo(doubterIndex) {
         const doubter = this.players[doubterIndex];
         const bidder = this.findPlayerById(this.round.lastBid.playerId);
@@ -325,7 +379,11 @@ class PerudoGame {
             return;
         }
 
-        const actualCount = RuleValidator.countMatchingDice(this.players, this.round.lastBid, this.round.palificoRound);
+        const revealedDice = this.buildRevealedDiceForResolution(this.round.lastBid, this.round.palificoRound);
+        const actualCount = revealedDice.reduce(
+            (sum, playerDice) => sum + playerDice.matchingMask.filter(Boolean).length,
+            0
+        );
         const bidWasCorrect = actualCount >= this.round.lastBid.quantity;
         const loserId = bidWasCorrect ? doubter.id : bidder.id;
         const loserIndexBeforePenalty = this.players.findIndex(player => player.id === loserId);
@@ -336,6 +394,7 @@ class PerudoGame {
         this.round.lastResolution = {
             type: 'dudo',
             eventId: ++this.resolutionEventId,
+            palificoRound: Boolean(this.round.palificoRound),
             doubterPlayerId: doubter.id,
             doubterName: doubter.name,
             bidderPlayerId: bidder.id,
@@ -349,11 +408,7 @@ class PerudoGame {
             loserPlayerId: loser.id,
             loserName: loser.name,
             loserRemainingDice: Math.max(loser.diceCount, 0),
-            revealedDice: this.players.map(player => ({
-                playerId: player.id,
-                playerName: player.name,
-                dice: [...player.currentDice]
-            }))
+            revealedDice
         };
 
         this.addLog(`${doubter.name} calls Dudo on ${bidder.name}'s bid ${this.round.lastBid.quantity} x ${this.round.lastBid.face}.`);
@@ -420,7 +475,11 @@ class PerudoGame {
             return;
         }
 
-        const actualCount = RuleValidator.countMatchingDice(this.players, this.round.lastBid, this.round.palificoRound);
+        const revealedDice = this.buildRevealedDiceForResolution(this.round.lastBid, this.round.palificoRound);
+        const actualCount = revealedDice.reduce(
+            (sum, playerDice) => sum + playerDice.matchingMask.filter(Boolean).length,
+            0
+        );
         const bidIsExact = actualCount === this.round.lastBid.quantity;
 
         const callerDiceBefore = caller.diceCount;
@@ -433,6 +492,7 @@ class PerudoGame {
         this.round.lastResolution = {
             type: 'calza',
             eventId: ++this.resolutionEventId,
+            palificoRound: Boolean(this.round.palificoRound),
             callerPlayerId: caller.id,
             callerName: caller.name,
             bidderPlayerId: bidder.id,
@@ -445,11 +505,7 @@ class PerudoGame {
             bidIsExact,
             callerDiceBefore,
             callerDiceAfter: Math.max(caller.diceCount, 0),
-            revealedDice: this.players.map(player => ({
-                playerId: player.id,
-                playerName: player.name,
-                dice: [...player.currentDice]
-            }))
+            revealedDice
         };
 
         this.addLog(`${caller.name} calls Calza on ${bidder.name}'s bid ${this.round.lastBid.quantity} x ${this.round.lastBid.face}.`);

@@ -674,7 +674,7 @@ button:focus-visible,
 
 .priority-grid {
     display: grid;
-    grid-template-columns: 1.1fr 1.25fr;
+    grid-template-columns: 1.05fr minmax(130px, 0.72fr) minmax(180px, 1.05fr);
     gap: 10px;
 }
 
@@ -725,6 +725,21 @@ button:focus-visible,
     color: #425873;
     font-size: 0.86rem;
     line-height: 1.35;
+}
+
+.room-code-card {
+    min-width: 0;
+}
+
+.mobile-room-code-card {
+    display: none;
+}
+
+.room-code-value {
+    font-size: 1.42rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    word-break: break-word;
 }
 
 .dice-stage,
@@ -1451,6 +1466,22 @@ button:disabled {
     background: linear-gradient(180deg, #edf4ff 0%, #e2eeff 100%);
 }
 
+.actions-panel.turn-reminder-pulse,
+.play-toggle-button.turn-reminder-pulse {
+    animation: turnReminderPulseGlow 0.72s ease-out 2;
+}
+
+@keyframes turnReminderPulseGlow {
+    0%,
+    100% {
+        box-shadow: var(--shadow-sm);
+    }
+
+    50% {
+        box-shadow: 0 0 0 3px rgba(15, 139, 99, 0.2), 0 10px 24px rgba(15, 139, 99, 0.18);
+    }
+}
+
 .chat-toggle-button {
     min-width: 126px;
     min-height: 44px;
@@ -1769,6 +1800,10 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+#quantity-overflow-modal {
+    z-index: 90;
 }
 
 .modal-overlay {
@@ -2813,6 +2848,21 @@ body.dark-mode .victory-message {
         gap: 8px;
     }
 
+    .priority-grid .room-code-card {
+        display: none;
+    }
+
+    .mobile-room-code-card {
+        display: block;
+        margin-bottom: 8px;
+        min-height: 70px;
+        padding-bottom: 4px;
+    }
+
+    .mobile-room-code-card .room-code-value {
+        margin-bottom: 0;
+    }
+
     .priority-card {
         padding: 8px 10px;
     }
@@ -2956,19 +3006,27 @@ body.dark-mode .victory-message {
         bottom: 10px;
         z-index: 67;
         display: grid;
+        align-content: start;
+        height: auto !important;
+        min-height: 0;
         max-height: min(72vh, 560px);
         overflow-y: auto;
         box-shadow: var(--shadow-lg);
-        padding: 7px 9px;
-        gap: 6px;
+        padding: 8px 10px;
+        gap: 7px;
     }
 
     .actions-panel.vertical-console.mobile-console-active .section-heading-row {
-        margin-bottom: 4px;
+        margin: 4px 0 8px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .section-heading-row h2 {
+        line-height: 1.2;
+        font-size: 1rem;
     }
 
     .actions-panel.vertical-console.mobile-console-active .bid-controls {
-        gap: 6px;
+        gap: 7px;
     }
 
     .actions-panel.vertical-console.mobile-console-active .bid-group {
@@ -2976,12 +3034,33 @@ body.dark-mode .victory-message {
     }
 
     .actions-panel.vertical-console.mobile-console-active .group-label {
-        margin-bottom: 4px;
+        margin-bottom: 5px;
+        font-size: 0.84rem;
     }
 
     .actions-panel.vertical-console.mobile-console-active .option-buttons,
     .actions-panel.vertical-console.mobile-console-active #quantity-buttons {
         gap: 6px;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .option-btn {
+        min-height: 48px;
+        padding: 8px 10px;
+        font-size: 0.96rem;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .face-buttons .face-option {
+        width: 44px;
+        min-height: 44px;
+        height: 44px;
+        padding: 0;
+        margin: 0 auto;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active .face-option-die {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
     }
 
     .actions-panel.vertical-console.mobile-console-active .action-buttons {
@@ -2993,15 +3072,18 @@ body.dark-mode .victory-message {
     .actions-panel.vertical-console.mobile-console-active .hot-action,
     .actions-panel.vertical-console.mobile-console-active #calza-button,
     .actions-panel.vertical-console.mobile-console-active #dudo-button {
-        min-height: 36px;
-        font-size: 0.82rem;
+        min-height: 48px;
+        font-size: 0.92rem;
+    }
+
+    .actions-panel.vertical-console.mobile-console-active #bid-button {
+        min-height: 50px;
+        font-size: 0.94rem;
+        margin-bottom: 2px;
     }
 
     .actions-panel.vertical-console.mobile-console-active .action-helper {
-        margin-top: 2px;
-        min-height: 0;
-        font-size: 0.77rem;
-        line-height: 1.24;
+        display: none;
     }
 }
 
