@@ -204,6 +204,8 @@ async function connectAndJoin(wsUrl, name, roomId) {
     return {
         client,
         playerId: joined.playerId
+        ,
+        reconnectToken: joined.reconnectToken || ''
     };
 }
 
@@ -417,6 +419,51 @@ test('websocket late joiner starts spectating and can join game explicitly', asy
             alice.client.close(),
             bob.client.close(),
             cara ? cara.client.close() : Promise.resolve()
+        ]);
+    }
+});
+
+test('websocket reconnect token restores disconnected player seat within grace window', async () => {
+    const roomId = `ws-reconnect-${Date.now()}`;
+    const alice = await connectAndJoin(server.wsUrl, 'Alice', roomId);
+    const bob = await connectAndJoin(server.wsUrl, 'Bob', roomId);
+
+    let aliceReconnect;
+    try {
+        assert.ok(alice.reconnectToken);
+
+        await alice.client.close();
+
+        const disconnectedState = await bob.client.waitFor(
+            message => message.type === 'state'
+                && Array.isArray(message.players)
+                && message.players.some(player => player.id === alice.playerId && player.isDisconnected === true)
+        );
+
+        assert.equal(disconnectedState.players.some(player => player.id === alice.playerId), true);
+
+        aliceReconnect = createClient(server.wsUrl);
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Timed out opening websocket connection.')), 5000);
+            aliceReconnect.ws.once('open', () => {
+                clearTimeout(timer);
+                resolve();
+            });
+            aliceReconnect.ws.once('error', error => {
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+
+        aliceReconnect.send({ type: 'join', name: 'Alice', roomId, reconnectToken: alice.reconnectToken });
+
+        const rejoined = await aliceReconnect.waitFor(message => message.type === 'joined');
+        assert.equal(rejoined.playerId, alice.playerId);
+        assert.equal(rejoined.recovered, true);
+    } finally {
+        await Promise.all([
+            bob.client.close(),
+            aliceReconnect ? aliceReconnect.close() : Promise.resolve()
         ]);
     }
 });

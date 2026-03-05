@@ -73,6 +73,8 @@ class GameManager {
         this.chatSafetyByPlayerId = new Map();
         this.matchSessions = new Map();
         this.completedMatchRooms = new Set();
+        this.pendingReconnectByToken = new Map();
+        this.reconnectGraceMs = Number(options.reconnectGraceMs) > 0 ? Number(options.reconnectGraceMs) : 60000;
         this.send = options.send;
         this.authService = options.authService || null;
         this.telemetryStore = options.telemetryStore || null;
@@ -89,6 +91,204 @@ class GameManager {
             startingDicePerPlayer: options.startingDicePerPlayer,
             rollDice: options.rollDice
         };
+    }
+
+    normalizeReconnectToken(rawToken) {
+        const token = String(rawToken || '').trim();
+        if (!token || token.length > 200) {
+            return '';
+        }
+
+        return token;
+    }
+
+    createReconnectToken() {
+        return crypto.randomBytes(24).toString('hex');
+    }
+
+    ensureReconnectToken(player) {
+        if (player && player.reconnectToken) {
+            return player.reconnectToken;
+        }
+
+        const token = this.createReconnectToken();
+        if (player) {
+            player.reconnectToken = token;
+        }
+
+        return token;
+    }
+
+    clearPendingReconnectToken(token) {
+        const normalized = this.normalizeReconnectToken(token);
+        if (!normalized) {
+            return;
+        }
+
+        const pending = this.pendingReconnectByToken.get(normalized);
+        if (!pending) {
+            return;
+        }
+
+        clearTimeout(pending.timeoutHandle);
+        this.pendingReconnectByToken.delete(normalized);
+    }
+
+    clearPendingReconnectTokensForRoom(roomId) {
+        for (const [token, pending] of this.pendingReconnectByToken.entries()) {
+            if (pending.roomId !== roomId) {
+                continue;
+            }
+
+            clearTimeout(pending.timeoutHandle);
+            this.pendingReconnectByToken.delete(token);
+        }
+    }
+
+    maybeRestoreDisconnectedPlayer(ws, roomId, reconnectToken, identity) {
+        const normalizedToken = this.normalizeReconnectToken(reconnectToken);
+        if (!normalizedToken) {
+            return false;
+        }
+
+        const pending = this.pendingReconnectByToken.get(normalizedToken);
+        if (!pending) {
+            return false;
+        }
+
+        if (pending.expiresAt <= Date.now()) {
+            this.clearPendingReconnectToken(normalizedToken);
+            return false;
+        }
+
+        if (pending.roomId !== roomId) {
+            return false;
+        }
+
+        if (pending.authType === 'account') {
+            const incomingUsername = String(identity.accountUsername || '').toLowerCase();
+            if (identity.authType !== 'account' || incomingUsername !== pending.accountUsername) {
+                return false;
+            }
+        }
+
+        const game = this.games.get(roomId);
+        if (!game) {
+            this.clearPendingReconnectToken(normalizedToken);
+            return false;
+        }
+
+        const player = game.findPlayerById(pending.playerId);
+        if (!player || !player.isDisconnected) {
+            this.clearPendingReconnectToken(normalizedToken);
+            return false;
+        }
+
+        this.clearPendingReconnectToken(normalizedToken);
+        player.ws = ws;
+        player.isDisconnected = false;
+        player.disconnectedAt = null;
+        player.reconnectToken = normalizedToken;
+
+        this.clientToRoom.set(ws, roomId);
+        game.addLog(`${player.name} reconnected.`);
+        this.appendMatchAction(game, 'reconnect', player, {
+            roomId
+        });
+
+        this.send(ws, {
+            ...this.buildStateForClient(game, player),
+            type: 'joined',
+            playerId: player.id,
+            authType: player.authType,
+            reconnectToken: normalizedToken,
+            reconnectGraceMs: this.reconnectGraceMs,
+            recovered: true
+        });
+
+        this.send(ws, {
+            type: 'chat_history',
+            roomId,
+            messages: this.getRoomChatHistory(roomId)
+        });
+
+        this.broadcastState(game);
+        return true;
+    }
+
+    expireDisconnectedPlayer(pendingToken) {
+        const pending = this.pendingReconnectByToken.get(pendingToken);
+        if (!pending) {
+            return;
+        }
+
+        this.pendingReconnectByToken.delete(pendingToken);
+
+        const game = this.games.get(pending.roomId);
+        if (!game) {
+            return;
+        }
+
+        const player = game.findPlayerById(pending.playerId);
+        if (!player || !player.isDisconnected) {
+            return;
+        }
+
+        const roomId = pending.roomId;
+        this.chatSafetyByPlayerId.delete(player.id);
+
+        const session = this.getOrCreateMatchSession(game);
+        this.ensureParticipant(session, player);
+        this.markParticipantLeft(session, player);
+        this.appendMatchAction(game, 'leave', player, {
+            roomId,
+            reason: 'disconnect_timeout'
+        });
+
+        game.addLog(`${player.name} disconnected for too long and was removed.`);
+        game.removePlayerById(player.id);
+
+        if (game.players.length === 0) {
+            this.finalizeMatchIfNeeded(game, 'room_empty');
+            this.roomChatHistory.delete(roomId);
+            this.roomUiSettings.delete(roomId);
+            this.games.delete(roomId);
+            this.matchSessions.delete(roomId);
+            this.completedMatchRooms.delete(roomId);
+            this.clearPendingReconnectTokensForRoom(roomId);
+            return;
+        }
+
+        this.finalizeMatchIfNeeded(game, 'leave');
+        this.broadcastState(game);
+    }
+
+    holdSeatForReconnect(game, player, roomId) {
+        const token = this.ensureReconnectToken(player);
+        this.clearPendingReconnectToken(token);
+
+        player.ws = null;
+        player.isDisconnected = true;
+        player.disconnectedAt = Date.now();
+
+        const timeoutHandle = setTimeout(() => {
+            this.expireDisconnectedPlayer(token);
+        }, this.reconnectGraceMs);
+
+        this.pendingReconnectByToken.set(token, {
+            roomId,
+            playerId: player.id,
+            authType: player.authType || 'guest',
+            accountUsername: String(player.accountUsername || '').toLowerCase(),
+            expiresAt: Date.now() + this.reconnectGraceMs,
+            timeoutHandle
+        });
+
+        game.addLog(`${player.name} disconnected. Holding seat for ${Math.ceil(this.reconnectGraceMs / 1000)}s.`);
+        this.appendMatchAction(game, 'disconnect', player, {
+            roomId,
+            graceMs: this.reconnectGraceMs
+        });
     }
 
     persistTelemetry(task) {
@@ -344,6 +544,7 @@ class GameManager {
 
         const targetSession = this.getOrCreateMatchSession(game);
         this.ensureParticipant(targetSession, joinedPlayer);
+        const reconnectToken = this.ensureReconnectToken(joinedPlayer);
         this.appendMatchAction(game, 'join', joinedPlayer, {
             roomId: targetRoomId,
             source: 'rematch_transfer'
@@ -353,7 +554,10 @@ class GameManager {
         this.send(ws, {
             ...this.buildStateForClient(game, joinedPlayer),
             type: 'joined',
-            playerId: player.id
+            playerId: player.id,
+            authType: player.authType,
+            reconnectToken,
+            reconnectGraceMs: this.reconnectGraceMs
         });
         this.send(ws, {
             type: 'chat_history',
@@ -488,6 +692,11 @@ class GameManager {
 
         const identity = identityResult.identity;
         const game = this.getOrCreateGame(roomId);
+        const reconnectToken = this.normalizeReconnectToken(incoming.reconnectToken);
+
+        if (reconnectToken && this.maybeRestoreDisconnectedPlayer(ws, roomId, reconnectToken, identity)) {
+            return;
+        }
 
         const player = {
             id: crypto.randomUUID(),
@@ -512,6 +721,7 @@ class GameManager {
 
         const session = this.getOrCreateMatchSession(game);
         this.ensureParticipant(session, joinedPlayer);
+        const playerReconnectToken = this.ensureReconnectToken(joinedPlayer);
         this.appendMatchAction(game, 'join', joinedPlayer, {
             roomId
         });
@@ -522,7 +732,9 @@ class GameManager {
             ...this.buildStateForClient(game, joinedPlayer),
             type: 'joined',
             playerId: player.id,
-            authType: player.authType
+            authType: player.authType,
+            reconnectToken: playerReconnectToken,
+            reconnectGraceMs: this.reconnectGraceMs
         });
 
         this.send(ws, {
@@ -546,12 +758,26 @@ class GameManager {
             return;
         }
 
+        const leavingPlayer = game.findPlayerBySocket(ws);
+        const isIntentionalLeave = Boolean(ws && ws.__intentionalLeave);
+        if (ws) {
+            ws.__intentionalLeave = false;
+        }
+
+        this.clientToRoom.delete(ws);
+
+        if (leavingPlayer && !isIntentionalLeave) {
+            this.holdSeatForReconnect(game, leavingPlayer, roomId);
+            this.broadcastState(game);
+            return;
+        }
+
         if (game.round.phase === 'game_over') {
             this.finalizeMatchIfNeeded(game, 'leave');
         }
 
-        const leavingPlayer = game.findPlayerBySocket(ws);
         if (leavingPlayer) {
+            this.clearPendingReconnectToken(leavingPlayer.reconnectToken);
             this.chatSafetyByPlayerId.delete(leavingPlayer.id);
             const session = this.getOrCreateMatchSession(game);
             this.ensureParticipant(session, leavingPlayer);
@@ -570,11 +796,21 @@ class GameManager {
             this.games.delete(roomId);
             this.matchSessions.delete(roomId);
             this.completedMatchRooms.delete(roomId);
+            this.clearPendingReconnectTokensForRoom(roomId);
             return;
         }
 
         this.finalizeMatchIfNeeded(game, 'leave');
         this.broadcastState(game);
+    }
+
+    handleLeave(ws) {
+        if (!ws) {
+            return;
+        }
+
+        ws.__intentionalLeave = true;
+        this.removeBySocket(ws);
     }
 
     getContext(ws) {
@@ -722,6 +958,8 @@ class GameManager {
         if (context.game.round.phase === 'game_over') {
             this.finalizeMatchIfNeeded(context.game, 'end_game');
         }
+
+        this.clearPendingReconnectTokensForRoom(context.game.roomId);
 
         context.game.resetToWaiting(context.player);
 

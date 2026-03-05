@@ -304,3 +304,44 @@ test('telemetry store records chat, match history, and account win/loss', async 
     assert.equal(accountStats.some(item => item.isWin === true), true);
     assert.equal(accountStats.some(item => item.isWin === false), true);
 });
+
+test('disconnect holds seat during grace window and reconnect restores same player id', () => {
+    const sent = [];
+    const manager = createManager(sent, { reconnectGraceMs: 120 });
+
+    const wsAlice = { id: 'ws-alice' };
+    const wsBob = { id: 'ws-bob' };
+
+    manager.join(wsAlice, { type: 'join', name: 'Alice', roomId: 'reconnect-room' });
+    manager.join(wsBob, { type: 'join', name: 'Bob', roomId: 'reconnect-room' });
+
+    const firstJoin = sent.find(entry => entry.ws === wsAlice && entry.payload.type === 'joined');
+    assert.ok(firstJoin);
+    const reconnectToken = firstJoin.payload.reconnectToken;
+    const originalPlayerId = firstJoin.payload.playerId;
+    assert.ok(reconnectToken);
+
+    sent.length = 0;
+    manager.removeBySocket(wsAlice);
+
+    const game = manager.games.get('reconnect-room');
+    const disconnectedAlice = game.players.find(player => player.id === originalPlayerId);
+    assert.ok(disconnectedAlice);
+    assert.equal(disconnectedAlice.isDisconnected, true);
+
+    const wsAliceReconnect = { id: 'ws-alice-reconnect' };
+    manager.join(wsAliceReconnect, {
+        type: 'join',
+        name: 'Alice',
+        roomId: 'reconnect-room',
+        reconnectToken
+    });
+
+    const rejoined = sent.find(entry => entry.ws === wsAliceReconnect && entry.payload.type === 'joined');
+    assert.ok(rejoined);
+    assert.equal(rejoined.payload.playerId, originalPlayerId);
+
+    const restoredAlice = game.players.find(player => player.id === originalPlayerId);
+    assert.ok(restoredAlice);
+    assert.equal(restoredAlice.isDisconnected, false);
+});

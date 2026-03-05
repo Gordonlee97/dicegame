@@ -32,7 +32,7 @@ function rollDice(count) {
 }
 
 function send(ws, payload) {
-    if (ws.readyState === ws.OPEN) {
+    if (ws && ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(payload));
     }
 }
@@ -162,7 +162,8 @@ async function startServer() {
             muteMs: Number(process.env.CHAT_MUTE_MS) || undefined,
             duplicateWindowMs: Number(process.env.CHAT_DUPLICATE_WINDOW_MS) || undefined,
             blockedTerms: parseBlockedTerms(process.env.CHAT_BLOCKED_TERMS)
-        }
+        },
+        reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || undefined
     });
 
     const registerAdminKey = String(process.env.AUTH_ADMIN_KEY || '').trim();
@@ -352,6 +353,11 @@ async function startServer() {
 
                 if (data.type === 'rematch') {
                     gameManager.handleRematch(ws);
+                    return;
+                }
+
+                if (data.type === 'leave') {
+                    gameManager.handleLeave(ws);
                     return;
                 }
 

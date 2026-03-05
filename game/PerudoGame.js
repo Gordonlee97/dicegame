@@ -219,6 +219,15 @@ class PerudoGame {
 
     removePlayerBySocket(ws) {
         const leavingIndex = this.findPlayerIndexBySocket(ws);
+        return this.removePlayerByIndex(leavingIndex);
+    }
+
+    removePlayerById(playerId) {
+        const leavingIndex = this.players.findIndex(player => player.id === playerId);
+        return this.removePlayerByIndex(leavingIndex);
+    }
+
+    removePlayerByIndex(leavingIndex) {
         if (leavingIndex === -1) {
             return;
         }
@@ -280,6 +289,7 @@ class PerudoGame {
                 name: item.name,
                 diceCount: item.diceCount,
                 isSpectator: Boolean(item.isSpectator),
+                isDisconnected: Boolean(item.isDisconnected),
                 isEliminated: !item.isSpectator && item.diceCount <= 0
             })),
             currentTurnPlayerId: currentTurnPlayer ? currentTurnPlayer.id : null,

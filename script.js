@@ -101,6 +101,7 @@ const state = {
     playerId: null,
     roomId: null,
     authToken: null,
+    reconnectToken: null,
     authMode: 'guest',
     accountAction: 'login',
     isConnected: false,
@@ -150,6 +151,7 @@ const maxActionLogEntries = 120;
 const maxChatMessages = 150;
 const turnTimerDurationMs = 30000;
 const turnTimerTickMs = 120;
+const reconnectTokenStorageKeyPrefix = 'perudo.reconnect.';
 const profanityTerms = [
     'ass',
     'asshole',
@@ -754,6 +756,51 @@ function getApiBaseUrl() {
     }
 
     return `${window.location.protocol}//${window.location.host}`;
+}
+
+function getReconnectStorageKey(roomId) {
+    const normalizedRoomId = String(roomId || '').trim().toLowerCase();
+    return `${reconnectTokenStorageKeyPrefix}${normalizedRoomId}`;
+}
+
+function getStoredReconnectToken(roomId) {
+    const normalizedRoomId = String(roomId || '').trim();
+    if (!normalizedRoomId) {
+        return '';
+    }
+
+    try {
+        return String(window.localStorage.getItem(getReconnectStorageKey(normalizedRoomId)) || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+function storeReconnectToken(roomId, token) {
+    const normalizedRoomId = String(roomId || '').trim();
+    const normalizedToken = String(token || '').trim();
+    if (!normalizedRoomId || !normalizedToken) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(getReconnectStorageKey(normalizedRoomId), normalizedToken);
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function clearStoredReconnectToken(roomId) {
+    const normalizedRoomId = String(roomId || '').trim();
+    if (!normalizedRoomId) {
+        return;
+    }
+
+    try {
+        window.localStorage.removeItem(getReconnectStorageKey(normalizedRoomId));
+    } catch {
+        // ignore storage failures
+    }
 }
 
 function setAuthMode(nextMode) {
@@ -2420,6 +2467,7 @@ async function connectToMatch() {
     const roomId = isAccountMode
         ? (roomIdAccountInput.value.trim() || 'lobby')
         : (roomIdInput.value.trim() || 'lobby');
+    const reconnectToken = getStoredReconnectToken(roomId);
     let joinName = guestName;
     let authToken = null;
 
@@ -2454,7 +2502,7 @@ async function connectToMatch() {
     state.socket = socket;
 
     socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ type: 'join', name: joinName, roomId, authToken }));
+        socket.send(JSON.stringify({ type: 'join', name: joinName, roomId, authToken, reconnectToken }));
     });
 
     socket.addEventListener('message', event => {
@@ -2471,6 +2519,10 @@ async function connectToMatch() {
             state.playerId = payload.playerId;
             state.roomId = payload.roomId;
             state.authToken = authToken;
+            state.reconnectToken = payload.reconnectToken || reconnectToken || null;
+            if (state.reconnectToken && state.roomId) {
+                storeReconnectToken(state.roomId, state.reconnectToken);
+            }
             state.rematchRequested = false;
             state.chatMessages = [];
             state.chatUnreadCount = 0;
@@ -2521,6 +2573,7 @@ async function connectToMatch() {
         state.playerId = null;
         state.roomId = null;
         state.authToken = null;
+        state.reconnectToken = null;
         state.lastBid = null;
         state.yourDice = [];
         state.actionLog = [];
@@ -2586,6 +2639,10 @@ function leaveMatch() {
     }
 
     openConfirmModal('Leave this table? You can rejoin from the lobby screen.', () => {
+        clearStoredReconnectToken(state.roomId);
+        if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+            state.socket.send(JSON.stringify({ type: 'leave' }));
+        }
         state.socket.close();
     });
 }
