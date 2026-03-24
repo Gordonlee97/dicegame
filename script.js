@@ -367,12 +367,12 @@ function playTone(frequency, durationMs, volume = 0.018, type = 'triangle') {
 }
 
 function playRattleCue() {
-    playTone(180, 90, 0.022, 'square');
-    setTimeout(() => playTone(235, 70, 0.02, 'square'), 24);
-    setTimeout(() => playTone(290, 85, 0.018, 'square'), 50);
-    setTimeout(() => playTone(360, 95, 0.016, 'triangle'), 88);
-    setTimeout(() => playTone(430, 72, 0.013, 'triangle'), 126);
-    setTimeout(() => playTone(250, 82, 0.014, 'sawtooth'), 162);
+    playTone(180, 90, 0.22, 'square');
+    setTimeout(() => playTone(235, 70, 0.21, 'square'), 24);
+    setTimeout(() => playTone(290, 85, 0.19, 'square'), 50);
+    setTimeout(() => playTone(360, 95, 0.17, 'triangle'), 88);
+    setTimeout(() => playTone(430, 72, 0.14, 'triangle'), 126);
+    setTimeout(() => playTone(250, 82, 0.15, 'sawtooth'), 162);
 }
 
 function playDiceRollCue() {
@@ -383,7 +383,7 @@ function playDiceRollCue() {
     if (!diceRollAudio) {
         diceRollAudio = new Audio('extras/Sound Effects/dice roll sound.wav');
         diceRollAudio.preload = 'auto';
-        diceRollAudio.volume = 0.9;
+        diceRollAudio.volume = 0.28;
     }
 
     try {
@@ -545,15 +545,15 @@ function triggerDiceRollAnimation() {
 }
 
 function playTurnAlertCue() {
-    playTone(620, 110, 0.026, 'square');
-    setTimeout(() => playTone(880, 130, 0.024, 'triangle'), 72);
-    setTimeout(() => playTone(1120, 160, 0.02, 'sine'), 150);
+    playTone(620, 110, 0.14, 'triangle');
+    setTimeout(() => playTone(880, 130, 0.12, 'triangle'), 72);
+    setTimeout(() => playTone(1040, 160, 0.10, 'sine'), 150);
 }
 
 function playTurnTimeoutCue() {
-    playTone(360, 140, 0.022, 'square');
-    setTimeout(() => playTone(300, 160, 0.022, 'square'), 140);
-    setTimeout(() => playTone(420, 180, 0.02, 'triangle'), 300);
+    playTone(360, 140, 0.21, 'square');
+    setTimeout(() => playTone(300, 160, 0.21, 'square'), 140);
+    setTimeout(() => playTone(420, 180, 0.18, 'triangle'), 300);
 }
 
 function getCurrentTurnTimerKey() {
@@ -597,47 +597,63 @@ function updatePlayerTurnTimer() {
 }
 
 function playDudoSuccessCue() {
-    playTone(640, 90, 0.02, 'triangle');
-    setTimeout(() => playTone(860, 100, 0.02, 'triangle'), 68);
-    setTimeout(() => playTone(1080, 130, 0.018, 'sine'), 138);
-    setTimeout(() => playTone(1320, 160, 0.016, 'sine'), 220);
+    playTone(640, 90, 0.13, 'triangle');
+    setTimeout(() => playTone(860, 100, 0.12, 'triangle'), 68);
+    setTimeout(() => playTone(1080, 130, 0.11, 'sine'), 138);
+    setTimeout(() => playTone(1320, 160, 0.09, 'sine'), 220);
 }
 
 function playDudoFailCue() {
-    playTone(250, 120, 0.02, 'sawtooth');
-    setTimeout(() => playTone(210, 140, 0.018, 'square'), 88);
-    setTimeout(() => playTone(175, 160, 0.015, 'triangle'), 170);
+    playTone(250, 120, 0.13, 'triangle');
+    setTimeout(() => playTone(210, 140, 0.11, 'triangle'), 88);
+    setTimeout(() => playTone(175, 160, 0.09, 'triangle'), 170);
 }
 
 function playChatUnreadCue() {
-    playTone(930, 55, 0.011, 'triangle');
-    setTimeout(() => playTone(1140, 75, 0.01, 'sine'), 62);
+    playTone(930, 55, 0.14, 'triangle');
+    setTimeout(() => playTone(1140, 75, 0.11, 'sine'), 62);
+}
+
+const toastQueue = [];
+const maxVisibleToasts = 3;
+const toastIcons = { round: '🎲', turn: '▶', timer: '⏱', dudo: '⚡', chat: '💬' };
+
+function flushToastQueue() {
+    if (!eventToastLayer) { return; }
+    while (toastQueue.length > 0 && eventToastLayer.childElementCount < maxVisibleToasts) {
+        const { message, variant, holdMs, exitMs, exitAsAside } = toastQueue.shift();
+        renderToast(message, variant, holdMs, exitMs, exitAsAside);
+    }
+}
+
+function renderToast(message, variant, holdMs, exitMs, exitAsAside) {
+    const icon = toastIcons[variant] || '';
+    const toast = document.createElement('div');
+    toast.className = `event-toast ${variant}`;
+    toast.textContent = icon ? `${icon} ${message}` : message;
+    eventToastLayer.appendChild(toast);
+
+    const removeClass = exitAsAside ? 'slide-aside' : 'fade-out';
+    setTimeout(() => {
+        toast.classList.add(removeClass);
+        setTimeout(() => {
+            toast.parentNode?.removeChild(toast);
+            flushToastQueue();
+        }, exitMs);
+    }, holdMs);
 }
 
 function showEventToast(message, variant = 'round', options = {}) {
-    if (!eventToastLayer) {
-        return;
-    }
-
+    if (!eventToastLayer) { return; }
     const holdMs = Number.isFinite(options.holdMs) ? options.holdMs : 1700;
     const exitMs = Number.isFinite(options.exitMs) ? options.exitMs : 620;
-    const removeClass = options.exitAsAside ? 'slide-aside' : 'fade-out';
+    const exitAsAside = Boolean(options.exitAsAside);
 
-    const toast = document.createElement('div');
-    toast.className = `event-toast ${variant}`;
-    toast.textContent = message;
-    eventToastLayer.appendChild(toast);
-
-    const startExit = () => {
-        toast.classList.add(removeClass);
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, exitMs);
-    };
-
-    setTimeout(startExit, holdMs);
+    if (eventToastLayer.childElementCount < maxVisibleToasts) {
+        renderToast(message, variant, holdMs, exitMs, exitAsAside);
+    } else {
+        toastQueue.push({ message, variant, holdMs, exitMs, exitAsAside });
+    }
 }
 
 function getCurrentTurnPlayerName() {
@@ -716,7 +732,7 @@ function triggerTurnReminderPulse() {
             }
         }
         turnReminderPulseTimeout = 0;
-    }, 1700);
+    }, 2500);
 }
 
 function maybeAnimateDudoCall(resolution) {
@@ -921,13 +937,34 @@ function updateWaitingStartNotice() {
     waitingStartNotice.classList.add('hidden');
 }
 
+function attachCopyButton(spanEl, getCode) {
+    const parent = spanEl.parentElement;
+    if (!parent || parent.querySelector('.room-code-copy-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'room-code-copy-btn';
+    btn.setAttribute('aria-label', 'Copy room code');
+    btn.textContent = '⎘';
+    btn.addEventListener('click', () => {
+        const code = getCode();
+        if (!code || code === '-') return;
+        navigator.clipboard.writeText(code).then(() => {
+            btn.textContent = '✓';
+            setTimeout(() => { btn.textContent = '⎘'; }, 1500);
+        }).catch(() => {});
+    });
+    parent.appendChild(btn);
+}
+
 function renderLobbyCode() {
     const code = state.roomId || '-';
     if (lobbyCodeText) {
         lobbyCodeText.textContent = code;
+        attachCopyButton(lobbyCodeText, () => state.roomId || '');
     }
     if (lobbyCodeMobileText) {
         lobbyCodeMobileText.textContent = code;
+        attachCopyButton(lobbyCodeMobileText, () => state.roomId || '');
     }
 }
 
@@ -1059,6 +1096,16 @@ function addTouchFeedback(element) {
     element.addEventListener('touchcancel', clear, { passive: true });
 }
 
+function haptic(type) {
+    if (!navigator.vibrate) return;
+    switch (type) {
+        case 'selection': navigator.vibrate(8); break;
+        case 'action':    navigator.vibrate(20); break;
+        case 'critical':  navigator.vibrate([35, 25, 35]); break;
+        case 'open':      navigator.vibrate(6); break;
+    }
+}
+
 function createSelfCardDieNode(value, index, tintColor = '') {
     const die = document.createElement('div');
     die.className = 'die player-card-die';
@@ -1126,10 +1173,8 @@ function renderPlayers() {
         if (isTurn) {
             item.classList.add('turn');
             if (playerColor) {
-                item.style.setProperty('--turn-border', toTranslucentColor(playerColor, 0.58));
-                item.style.setProperty('--turn-bg', toTranslucentColor(playerColor, 0.035));
-                item.style.setProperty('--turn-glow', toTranslucentColor(playerColor, 0.34));
-                item.style.setProperty('--turn-glow-soft', toTranslucentColor(playerColor, 0.17));
+                item.style.setProperty('--turn-accent', playerColor);
+                item.style.setProperty('--turn-bg', toTranslucentColor(playerColor, 0.05));
             }
         }
 
@@ -1576,22 +1621,29 @@ function renderChatMessages() {
     for (const chatMessage of state.chatMessages) {
         ensurePlayerColor(chatMessage.playerName || 'Player', chatMessage.playerId || '');
 
+        const isSelf = chatMessage.playerId === state.playerId
+            || (!chatMessage.playerId && chatMessage.playerName === state.players.find(p => p.id === state.playerId)?.name);
+
         const item = document.createElement('li');
-        item.className = 'chat-message-item';
+        item.className = `chat-message-item ${isSelf ? 'chat-self' : 'chat-other'}`;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-message-bubble';
+        bubble.textContent = censorProfanities(chatMessage.message || '');
 
         const meta = document.createElement('p');
         meta.className = 'chat-message-meta';
-
-        const sender = createColoredPlayerNameNode(chatMessage.playerName || 'Player', chatMessage.playerId || '');
+        if (!isSelf) {
+            const sender = createColoredPlayerNameNode(chatMessage.playerName || 'Player', chatMessage.playerId || '');
+            meta.appendChild(sender);
+            meta.appendChild(document.createTextNode(' · '));
+        }
         const sentAt = Number(chatMessage.sentAt);
         const hasTimestamp = Number.isFinite(sentAt) && sentAt > 0;
         const timeText = hasTimestamp ? new Date(sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
-        meta.append(sender, document.createTextNode(` • ${timeText}`));
+        meta.appendChild(document.createTextNode(timeText));
 
-        const content = document.createElement('p');
-        content.textContent = censorProfanities(chatMessage.message || '');
-
-        item.append(meta, content);
+        item.append(bubble, meta);
         chatMessagesList.appendChild(item);
     }
 
@@ -1749,7 +1801,8 @@ function renderQuantityButtons(canAct) {
             }
 
             state.selectedBidQuantity = quantity;
-            playTone(420, 70, 0.014);
+            haptic('selection');
+            playTone(420, 70, 0.022);
             updateActionAvailability();
         });
 
@@ -1794,7 +1847,8 @@ function renderQuantityButtons(canAct) {
 
             state.selectedBidQuantity = quantity;
             closeQuantityOverflowModal();
-            playTone(420, 70, 0.014);
+            haptic('selection');
+            playTone(420, 70, 0.022);
             updateActionAvailability();
         });
 
@@ -1851,7 +1905,8 @@ function renderFaceButtons(canAct) {
                     state.selectedBidQuantity = minimumLegalQuantity;
                 }
             }
-            playTone(460 + face * 18, 70, 0.013);
+            haptic('selection');
+            playTone(460 + face * 18, 70, 0.022);
             updateActionAvailability();
         });
 
@@ -1942,31 +1997,36 @@ function closeVictoryModal() {
 }
 
 function playVictoryCue() {
-    playTone(520, 120, 0.018, 'triangle');
-    setTimeout(() => playTone(700, 150, 0.018, 'triangle'), 70);
-    setTimeout(() => playTone(920, 210, 0.016, 'triangle'), 155);
-    setTimeout(() => playTone(1140, 180, 0.012, 'sine'), 280);
+    playTone(520, 120, 0.24, 'triangle');
+    setTimeout(() => playTone(700, 150, 0.22, 'triangle'), 70);
+    setTimeout(() => playTone(920, 210, 0.20, 'triangle'), 155);
+    setTimeout(() => playTone(1140, 180, 0.17, 'sine'), 280);
 }
 
 function spawnVictoryBurst() {
     victoryBurst.replaceChildren();
 
-    const symbols = ['✨', '⭐', '🎉'];
-    const pieces = 30;
-
-    for (let index = 0; index < pieces; index += 1) {
-        const piece = document.createElement('span');
-        piece.className = 'victory-piece';
-        piece.textContent = symbols[index % symbols.length];
-        const angle = (Math.PI * 2 * index) / pieces + Math.random() * 0.45;
-        const distance = 64 + Math.random() * 62;
-        const dx = Math.cos(angle) * distance;
-        const dy = Math.sin(angle) * distance;
-        piece.style.setProperty('--spark-x', `${dx.toFixed(0)}px`);
-        piece.style.setProperty('--spark-y', `${dy.toFixed(0)}px`);
-        piece.style.animationDelay = `${Math.random() * 0.16}s`;
-        piece.style.animationDuration = `${1.25 + Math.random() * 0.55}s`;
-        victoryBurst.appendChild(piece);
+    if (typeof confetti === 'function') {
+        const origin = { x: 0.5, y: 0.6 };
+        confetti({ particleCount: 90, spread: 80, origin, startVelocity: 38, gravity: 0.9, ticks: 220, colors: ['#f5d060', '#e84d6f', '#4da8ff', '#72e0a0', '#c76cf5'] });
+        setTimeout(() => confetti({ particleCount: 40, spread: 60, origin: { x: 0.3, y: 0.65 }, startVelocity: 28, gravity: 0.9, ticks: 180 }), 180);
+        setTimeout(() => confetti({ particleCount: 40, spread: 60, origin: { x: 0.7, y: 0.65 }, startVelocity: 28, gravity: 0.9, ticks: 180 }), 280);
+    } else {
+        // fallback: simple emoji burst
+        const symbols = ['✨', '⭐', '🎉'];
+        const pieces = 20;
+        for (let index = 0; index < pieces; index += 1) {
+            const piece = document.createElement('span');
+            piece.className = 'victory-piece';
+            piece.textContent = symbols[index % symbols.length];
+            const angle = (Math.PI * 2 * index) / pieces + Math.random() * 0.45;
+            const distance = 60 + Math.random() * 60;
+            piece.style.setProperty('--spark-x', `${(Math.cos(angle) * distance).toFixed(0)}px`);
+            piece.style.setProperty('--spark-y', `${(Math.sin(angle) * distance).toFixed(0)}px`);
+            piece.style.animationDelay = `${Math.random() * 0.16}s`;
+            piece.style.animationDuration = `${1.2 + Math.random() * 0.5}s`;
+            victoryBurst.appendChild(piece);
+        }
     }
 }
 
@@ -2164,6 +2224,8 @@ function updateActionAvailability() {
     calzaButton.disabled = !canCalza;
     dudoButton.disabled = !canAct || !state.lastBid;
 
+    actionHelper.classList.remove('helper-error');
+
     if (!canAct) {
         actionHelper.textContent = state.phase === 'waiting'
             ? (state.roundNumber === 0
@@ -2196,6 +2258,7 @@ function updateActionAvailability() {
     actionHelper.textContent = bidIsLegal
         ? `Ready to bid: ${state.selectedBidQuantity} × ${state.selectedBidFace}.`
         : 'Current selection is illegal. Choose highlighted options.';
+    actionHelper.classList.toggle('helper-error', hasSelection && !bidIsLegal);
 }
 
 function updateStatusFromState() {
@@ -2291,8 +2354,8 @@ function maybePlayBidAcceptedCue() {
         : '';
 
     if (state.previousBidKey && state.previousBidKey !== currentBidKey) {
-        playTone(520, 85, 0.016);
-        setTimeout(() => playTone(680, 90, 0.012), 72);
+        playTone(520, 85, 0.022);
+        setTimeout(() => playTone(680, 90, 0.018), 72);
     }
 
     state.previousBidKey = currentBidKey;
@@ -2535,7 +2598,7 @@ async function connectToMatch() {
             renderChatMessages();
             applyStateUpdate(payload);
             maybeHideLoadingScreen();
-            playTone(780, 90, 0.018);
+            playTone(780, 90, 0.022);
             return;
         }
 
@@ -2566,6 +2629,9 @@ async function connectToMatch() {
     });
 
     socket.addEventListener('close', () => {
+        if (state.isConnected) {
+            showEventToast('Connection lost – attempting to reconnect…', 'dudo', { holdMs: 3500, exitMs: 700 });
+        }
         state.isConnected = false;
         state.phase = 'waiting';
         state.players = [];
@@ -2654,6 +2720,7 @@ function placeBid() {
 
     setMobileActionConsoleOpen(false);
 
+    haptic('action');
     state.socket.send(
         JSON.stringify({
             type: 'bid',
@@ -2662,7 +2729,7 @@ function placeBid() {
         })
     );
 
-    playTone(545, 80, 0.015);
+    playTone(545, 80, 0.022);
 }
 
 function callDudo() {
@@ -2672,6 +2739,7 @@ function callDudo() {
 
     setMobileActionConsoleOpen(false);
 
+    haptic('critical');
     state.socket.send(JSON.stringify({ type: 'dudo' }));
     playTone(260, 125, 0.02, 'sawtooth');
 }
@@ -2684,6 +2752,7 @@ function callCalza() {
     setMobileActionConsoleOpen(false);
 
     openConfirmModal('Call Calza? This is high-risk and resolves immediately.', () => {
+        haptic('critical');
         state.socket.send(JSON.stringify({ type: 'calza' }));
         playTone(410, 100, 0.017);
     });
@@ -2749,6 +2818,7 @@ function toggleChatPanel() {
 }
 
 function toggleMobileActionConsole() {
+    haptic('open');
     setMobileActionConsoleOpen(!mobileActionConsoleOpen);
 }
 
@@ -2815,9 +2885,11 @@ roomIdAccountInput.addEventListener('keydown', event => {
     connectToMatch();
 });
 roomIdInput.addEventListener('input', () => {
+    roomIdInput.value = roomIdInput.value.toUpperCase();
     roomIdAccountInput.value = roomIdInput.value;
 });
 roomIdAccountInput.addEventListener('input', () => {
+    roomIdAccountInput.value = roomIdAccountInput.value.toUpperCase();
     roomIdInput.value = roomIdAccountInput.value;
 });
 leaveButton.addEventListener('click', leaveMatch);
