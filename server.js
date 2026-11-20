@@ -163,7 +163,13 @@ async function startServer() {
             duplicateWindowMs: Number(process.env.CHAT_DUPLICATE_WINDOW_MS) || undefined,
             blockedTerms: parseBlockedTerms(process.env.CHAT_BLOCKED_TERMS)
         },
-        reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || undefined
+        reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || undefined,
+        bot: {
+            delayMinMs: Number(process.env.BOT_DELAY_MIN_MS) || undefined,
+            delayMaxMs: Number(process.env.BOT_DELAY_MAX_MS) || undefined,
+            fastForwardDelayMs: Number(process.env.BOT_FAST_FORWARD_MS) || undefined,
+            revealWaitCapMs: Number(process.env.BOT_REVEAL_WAIT_CAP_MS) || undefined
+        }
     });
 
     const registerAdminKey = String(process.env.AUTH_ADMIN_KEY || '').trim();
@@ -328,6 +334,11 @@ async function startServer() {
 
                 if (data.type === 'calza') {
                     gameManager.handleCalza(ws);
+                    return;
+                }
+
+                if (data.type === 'reveal_done') {
+                    gameManager.handleRevealDone(ws, data);
                     return;
                 }
 

@@ -68,7 +68,11 @@ async function startServer() {
             CHAT_MAX_MESSAGES_PER_WINDOW: '3',
             CHAT_RATE_WINDOW_MS: '2000',
             CHAT_MUTE_MS: '1500',
-            CHAT_DUPLICATE_WINDOW_MS: '2000'
+            CHAT_DUPLICATE_WINDOW_MS: '2000',
+            BOT_DELAY_MIN_MS: '5',
+            BOT_DELAY_MAX_MS: '10',
+            BOT_REVEAL_WAIT_CAP_MS: '50',
+            BOT_FAST_FORWARD_MS: '1'
         },
         stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -603,6 +607,70 @@ test('create_room over WebSocket returns joined with a new room', async () => {
         assert.equal(typeof joined.playerId, 'string');
         assert.match(joined.roomId, /^[a-z0-9]{4}$/);
         assert.equal(state.players[0].name, 'Host');
+    } finally {
+        await client.close();
+    }
+});
+
+test('one human vs two bots plays to game over', async () => {
+    const client = createClient(server.wsUrl);
+
+    try {
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Timed out opening websocket connection.')), 5000);
+            client.ws.once('open', () => {
+                clearTimeout(timer);
+                resolve();
+            });
+            client.ws.once('error', error => {
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+
+        client.send({ type: 'create_room', name: 'Ann' });
+        const joined = await client.waitFor(message => message.type === 'joined');
+        const annId = joined.playerId;
+
+        // Ann's scripted play: dudo any bid, otherwise open with 1 x 2; ack every reveal.
+        const answeredTurns = new Set();
+        const ackedEvents = new Set();
+        client.ws.on('message', raw => {
+            const message = JSON.parse(raw.toString());
+            if (message.type !== 'state') {
+                return;
+            }
+
+            const eventId = message.lastResolution && message.lastResolution.eventId;
+            if (eventId && !ackedEvents.has(eventId)) {
+                ackedEvents.add(eventId);
+                client.send({ type: 'reveal_done', eventId });
+            }
+
+            if (message.phase !== 'bidding' || message.currentTurnPlayerId !== annId) {
+                return;
+            }
+
+            const turnKey = `${message.roundNumber}:${message.lastBid ? `${message.lastBid.quantity}x${message.lastBid.face}` : '-'}`;
+            if (answeredTurns.has(turnKey)) {
+                return;
+            }
+            answeredTurns.add(turnKey);
+            client.send(message.lastBid ? { type: 'dudo' } : { type: 'bid', quantity: 1, face: 2 });
+        });
+
+        client.send({ type: 'add_bot' });
+        client.send({ type: 'add_bot' });
+        await client.waitFor(message => message.type === 'state'
+            && message.players.filter(player => player.isBot).length === 2);
+        client.send({ type: 'start_game' });
+
+        const finalState = await client.waitFor(message => message.type === 'state' && message.phase === 'game_over', 15000);
+
+        assert.equal(finalState.phase, 'game_over');
+        assert.ok(finalState.winnerPlayerId);
+        assert.ok(ackedEvents.size > 0);
+        assert.equal(client.messages.some(message => message.type === 'error'), false);
     } finally {
         await client.close();
     }

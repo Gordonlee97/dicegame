@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const Bid = require('./Bid');
 const PerudoGame = require('./PerudoGame');
+const BotController = require('./BotController');
 
 function sanitizeName(name) {
     const trimmed = String(name || '').trim();
@@ -85,6 +86,7 @@ class GameManager {
             startingDicePerPlayer: options.startingDicePerPlayer,
             rollDice: options.rollDice
         };
+        this.botController = new BotController({ ...options.bot, manager: this });
     }
 
     normalizeReconnectToken(rawToken) {
@@ -679,6 +681,8 @@ class GameManager {
         for (const player of game.players) {
             this.send(player.ws, this.buildStateForClient(game, player));
         }
+
+        this.botController.onStateChanged(game);
     }
 
     getRoomChatHistory(roomId) {
@@ -1036,6 +1040,19 @@ class GameManager {
         if (!result.ok) {
             this.send(ws, { type: 'error', message: result.error });
         }
+    }
+
+    // Client finished showing the reveal for `eventId`. Stale, unknown or
+    // out-of-room input is ignored without an error reply.
+    handleRevealDone(ws, payload) {
+        const roomId = this.clientToRoom.get(ws);
+        const game = roomId ? this.games.get(roomId) : null;
+        const player = game ? game.findPlayerBySocket(ws) : null;
+        if (!player) {
+            return;
+        }
+
+        this.botController.onRevealDone(game, player.id, payload && payload.eventId);
     }
 
     handleStartGame(ws) {
