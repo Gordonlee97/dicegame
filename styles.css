@@ -317,10 +317,37 @@ button:focus-visible,
 }
 
 #join-button,
+#start-room-button,
 #account-submit-button {
     justify-self: stretch;
     width: 100%;
     margin-top: 4px;
+}
+
+#join-button.secondary-button {
+    background: transparent;
+    color: var(--accent-strong);
+    border: 1px solid var(--accent);
+}
+
+.link-button {
+    justify-self: center;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 6px 8px;
+    min-height: 36px;
+    color: var(--accent-strong);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+body.dark-mode #join-button.secondary-button,
+body.dark-mode .link-button {
+    background: transparent;
+    color: var(--accent);
 }
 
 #status {

@@ -40,22 +40,21 @@
 
         <section id="join-screen" class="screen" aria-label="Join screen">
             <h1 class="title-display">Perudo</h1>
-            <p class="join-subtitle">Enter a name and room to start playing.</p>
+            <p class="join-subtitle">Start a game, then invite friends with a link.</p>
             <section class="join-auth-shell" aria-label="Join match">
                 <div class="auth-left-pane">
-                    <div class="auth-mode-buttons" role="group" aria-label="Sign in options">
-                        <button id="auth-mode-guest" class="auth-mode-button selected" type="button">Guest</button>
-                        <button id="auth-mode-account" class="auth-mode-button" type="button">Account</button>
-                    </div>
-
                     <section id="guest-form" class="auth-form-panel" aria-label="Guest form">
-                        <label for="player-name" id="guest-name-label">Display Name</label>
-                        <input id="player-name" type="text" maxlength="20" value="Player" autocomplete="nickname">
+                        <label for="player-name" id="guest-name-label">Your name</label>
+                        <input id="player-name" type="text" maxlength="20" autocomplete="nickname">
 
-                        <label for="room-id">Room Code</label>
-                        <input id="room-id" type="text" maxlength="24" value="LOBBY" autocomplete="off" style="text-transform:uppercase">
+                        <button id="start-room-button" type="button">Start a game</button>
+                    </section>
 
-                        <button id="join-button" type="button">Join Room</button>
+                    <section id="room-code-panel" class="auth-form-panel" aria-label="Room code">
+                        <label for="room-id">Have a code?</label>
+                        <input id="room-id" type="text" maxlength="24" placeholder="Room code" autocomplete="off" style="text-transform:uppercase">
+
+                        <button id="join-button" type="button" class="secondary-button">Join</button>
                     </section>
 
                     <section id="account-form" class="auth-form-panel hidden" aria-label="Account form">
@@ -79,11 +78,10 @@
                         <label for="account-display-name" id="account-display-name-label" class="hidden">Display Name</label>
                         <input id="account-display-name" class="hidden" type="text" maxlength="20" autocomplete="nickname">
 
-                        <label for="room-id-account">Room Code</label>
-                        <input id="room-id-account" type="text" maxlength="24" value="LOBBY" autocomplete="off" style="text-transform:uppercase">
-
-                        <button id="account-submit-button" type="button">Sign In & Join</button>
+                        <button id="account-submit-button" type="button">Sign In & Play</button>
                     </section>
+
+                    <button id="auth-mode-toggle" class="link-button" type="button" aria-expanded="false">Sign in (optional)</button>
                 </div>
 
                 <aside class="auth-right-pane" aria-hidden="true">
@@ -99,7 +97,7 @@
             <section class="game-panel" aria-label="Dice game area">
                 <header class="game-header">
                     <div class="game-header-left">
-                        <h1 class="title-display">🎲 Perudo</h1>
+                        <h1 class="title-display">Perudo</h1>
                     </div>
                     <div class="game-header-right">
                         <button id="start-game-button" type="button" class="header-start-button hidden">Start Game</button>
@@ -322,6 +320,6 @@
     </main>
     <script src="/node_modules/canvas-confetti/dist/confetti.browser.js"></script>
     <script src="config.js"></script>
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

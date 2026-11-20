@@ -1,3 +1,5 @@
+import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName } from './client/invite.js';
+
 const diceContainer = document.getElementById('dice-container');
 const bidButton = document.getElementById('bid-button');
 const calzaButton = document.getElementById('calza-button');
@@ -6,8 +8,9 @@ const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
 const endGameButton = document.getElementById('end-game-button');
 const startGameButton = document.getElementById('start-game-button');
-const authModeGuestButton = document.getElementById('auth-mode-guest');
-const authModeAccountButton = document.getElementById('auth-mode-account');
+const startRoomButton = document.getElementById('start-room-button');
+const authModeToggleButton = document.getElementById('auth-mode-toggle');
+const roomCodePanel = document.getElementById('room-code-panel');
 const guestForm = document.getElementById('guest-form');
 const accountForm = document.getElementById('account-form');
 const accountActionLoginButton = document.getElementById('account-action-login');
@@ -15,7 +18,6 @@ const accountActionRegisterButton = document.getElementById('account-action-regi
 const quantityButtons = document.getElementById('quantity-buttons');
 const faceButtons = document.getElementById('face-buttons');
 const playerNameInput = document.getElementById('player-name');
-const guestNameLabel = document.getElementById('guest-name-label');
 const accountUsernameLabel = document.getElementById('account-username-label');
 const accountPasswordLabel = document.getElementById('account-password-label');
 const accountDisplayNameLabel = document.getElementById('account-display-name-label');
@@ -24,7 +26,6 @@ const accountPasswordInput = document.getElementById('account-password');
 const accountPasswordToggleButton = document.getElementById('account-password-toggle');
 const accountDisplayNameInput = document.getElementById('account-display-name');
 const roomIdInput = document.getElementById('room-id');
-const roomIdAccountInput = document.getElementById('room-id-account');
 const accountSubmitButton = document.getElementById('account-submit-button');
 const playersList = document.getElementById('players-list');
 const joinStatusText = document.getElementById('status');
@@ -748,9 +749,9 @@ function maybeAnimateDudoCall(resolution) {
 
 function setJoinState(enabled) {
     joinButton.disabled = !enabled;
+    startRoomButton.disabled = !enabled;
     playerNameInput.disabled = !enabled;
-    authModeGuestButton.disabled = !enabled;
-    authModeAccountButton.disabled = !enabled;
+    authModeToggleButton.disabled = !enabled;
     accountActionLoginButton.disabled = !enabled;
     accountActionRegisterButton.disabled = !enabled;
     accountUsernameInput.disabled = !enabled;
@@ -761,7 +762,6 @@ function setJoinState(enabled) {
     accountDisplayNameInput.disabled = !enabled;
     accountSubmitButton.disabled = !enabled;
     roomIdInput.disabled = !enabled;
-    roomIdAccountInput.disabled = !enabled;
 }
 
 function getApiBaseUrl() {
@@ -823,10 +823,25 @@ function setAuthMode(nextMode) {
     state.authMode = nextMode === 'account' ? 'account' : 'guest';
     const isAccountMode = state.authMode === 'account';
 
-    authModeGuestButton.classList.toggle('selected', !isAccountMode);
-    authModeAccountButton.classList.toggle('selected', isAccountMode);
+    authModeToggleButton.textContent = isAccountMode ? 'Continue as guest' : 'Sign in (optional)';
+    authModeToggleButton.setAttribute('aria-expanded', String(isAccountMode));
     guestForm.classList.toggle('hidden', isAccountMode);
+    updateEntryMode();
     accountForm.classList.toggle('hidden', !isAccountMode);
+}
+
+// Invite mode: the page was opened from a ?room= link. The code is pre-filled and
+// the primary button joins that room instead of starting a new one.
+const inviteCode = readInviteCode();
+
+function updateEntryMode() {
+    const isInvite = Boolean(inviteCode);
+    const isAccountMode = state.authMode === 'account';
+    startRoomButton.textContent = isInvite ? `Join game ${inviteCode.toUpperCase()}` : 'Start a game';
+    // In invite mode the primary button is the join action, so the code field is not needed.
+    // Account sign-in otherwise keeps the one code field; its own submit button replaces Join.
+    roomCodePanel.classList.toggle('hidden', isInvite);
+    joinButton.classList.toggle('hidden', isAccountMode);
 }
 
 function setAccountAction(nextAction) {
@@ -838,7 +853,7 @@ function setAccountAction(nextAction) {
     accountDisplayNameInput.classList.toggle('hidden', !isRegister);
     accountDisplayNameLabel.classList.toggle('hidden', !isRegister);
     accountPasswordInput.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
-    accountSubmitButton.textContent = isRegister ? 'Create Account & Join' : 'Sign In & Join';
+    accountSubmitButton.textContent = isRegister ? 'Create Account & Play' : 'Sign In & Play';
 }
 
 async function loginWithAccountCredentials() {
@@ -2524,15 +2539,28 @@ function applyStateUpdate(payload) {
     state.previousTurnPlayerId = state.currentTurnPlayerId;
 }
 
-async function connectToMatch() {
-    const guestName = playerNameInput.value.trim() || 'Player';
+// intent: 'create' always starts a new room; 'join' joins the code in the field (or invite);
+// 'auto' (account submit) joins if a code is present, otherwise starts a new room.
+async function connectToMatch(intent = 'auto') {
+    const guestName = playerNameInput.value.trim();
     const isAccountMode = state.authMode === 'account';
-    const roomId = isAccountMode
-        ? (roomIdAccountInput.value.trim() || 'lobby')
-        : (roomIdInput.value.trim() || 'lobby');
-    const reconnectToken = getStoredReconnectToken(roomId);
+    const enteredCode = sanitizeRoomCode(inviteCode || roomIdInput.value);
+    const isCreate = intent === 'create' || (intent === 'auto' && !enteredCode);
+    const roomId = isCreate ? '' : enteredCode;
     let joinName = guestName;
     let authToken = null;
+
+    if (!isAccountMode && !guestName) {
+        setStatus('Enter a name to join.');
+        return;
+    }
+
+    if (!isCreate && !roomId) {
+        setStatus('Enter a room code.');
+        return;
+    }
+
+    const reconnectToken = isCreate ? '' : getStoredReconnectToken(roomId);
 
     if (state.socket) {
         state.socket.close();
@@ -2550,7 +2578,7 @@ async function connectToMatch() {
                 ? await registerWithAccountCredentials()
                 : await loginWithAccountCredentials();
             authToken = authResult.token;
-            joinName = authResult.displayName || authResult.username || 'Player';
+            joinName = authResult.displayName || authResult.username;
             state.authToken = authToken;
         } catch (error) {
             setStatus(error.message || (state.accountAction === 'register' ? 'Account creation failed.' : 'Sign-in failed.'));
@@ -2565,7 +2593,10 @@ async function connectToMatch() {
     state.socket = socket;
 
     socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ type: 'join', name: joinName, roomId, authToken, reconnectToken }));
+        const message = isCreate
+            ? { type: 'create_room', name: joinName, authToken }
+            : { type: 'join', name: joinName, roomId, authToken, reconnectToken };
+        socket.send(JSON.stringify(message));
     });
 
     socket.addEventListener('message', event => {
@@ -2585,6 +2616,12 @@ async function connectToMatch() {
             state.reconnectToken = payload.reconnectToken || reconnectToken || null;
             if (state.reconnectToken && state.roomId) {
                 storeReconnectToken(state.roomId, state.reconnectToken);
+            }
+            if (state.roomId) {
+                setRoomInUrl(state.roomId);
+            }
+            if (!isAccountMode) {
+                saveName(joinName);
             }
             state.rematchRequested = false;
             state.chatMessages = [];
@@ -2822,12 +2859,10 @@ function toggleMobileActionConsole() {
     setMobileActionConsoleOpen(!mobileActionConsoleOpen);
 }
 
-joinButton.addEventListener('click', connectToMatch);
-authModeGuestButton.addEventListener('click', () => {
-    setAuthMode('guest');
-});
-authModeAccountButton.addEventListener('click', () => {
-    setAuthMode('account');
+joinButton.addEventListener('click', () => connectToMatch('join'));
+startRoomButton.addEventListener('click', () => connectToMatch(inviteCode ? 'join' : 'create'));
+authModeToggleButton.addEventListener('click', () => {
+    setAuthMode(state.authMode === 'account' ? 'guest' : 'account');
 });
 accountActionLoginButton.addEventListener('click', () => {
     setAccountAction('login');
@@ -2835,14 +2870,14 @@ accountActionLoginButton.addEventListener('click', () => {
 accountActionRegisterButton.addEventListener('click', () => {
     setAccountAction('register');
 });
-accountSubmitButton.addEventListener('click', connectToMatch);
+accountSubmitButton.addEventListener('click', () => connectToMatch('auto'));
 playerNameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
         return;
     }
 
     event.preventDefault();
-    connectToMatch();
+    startRoomButton.click();
 });
 roomIdInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2850,7 +2885,7 @@ roomIdInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    joinButton.click();
 });
 accountUsernameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2858,7 +2893,7 @@ accountUsernameInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 accountPasswordInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2866,7 +2901,7 @@ accountPasswordInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 accountDisplayNameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2874,23 +2909,10 @@ accountDisplayNameInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
-});
-roomIdAccountInput.addEventListener('keydown', event => {
-    if (event.key !== 'Enter') {
-        return;
-    }
-
-    event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 roomIdInput.addEventListener('input', () => {
     roomIdInput.value = roomIdInput.value.toUpperCase();
-    roomIdAccountInput.value = roomIdInput.value;
-});
-roomIdAccountInput.addEventListener('input', () => {
-    roomIdAccountInput.value = roomIdAccountInput.value.toUpperCase();
-    roomIdInput.value = roomIdAccountInput.value;
 });
 leaveButton.addEventListener('click', leaveMatch);
 endGameButton.addEventListener('click', requestEndGame);
@@ -2990,8 +3012,8 @@ confirmAcceptButton.addEventListener('click', () => {
 
 addTouchFeedback(joinButton);
 addTouchFeedback(accountSubmitButton);
-addTouchFeedback(authModeGuestButton);
-addTouchFeedback(authModeAccountButton);
+addTouchFeedback(authModeToggleButton);
+addTouchFeedback(startRoomButton);
 addTouchFeedback(accountActionLoginButton);
 addTouchFeedback(accountActionRegisterButton);
 addTouchFeedback(leaveButton);
@@ -3019,6 +3041,10 @@ state.ui.filterProfanities = profanityToggle.checked;
 turnTimerToggle.checked = state.ui.turnTimerEnabled;
 setPasswordVisibility(false);
 setAuthMode('guest');
+playerNameInput.value = loadSavedName();
+if (inviteCode) {
+    roomIdInput.value = inviteCode.toUpperCase();
+}
 setAccountAction('login');
 setLeaveState(false);
 updateActionAvailability();
