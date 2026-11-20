@@ -23,10 +23,16 @@ class PerudoGame {
     }
 
     findPlayerBySocket(ws) {
+        if (!ws) {
+            return null;
+        }
         return this.players.find(player => player.ws === ws) || null;
     }
 
     findPlayerIndexBySocket(ws) {
+        if (!ws) {
+            return -1;
+        }
         return this.players.findIndex(player => player.ws === ws);
     }
 
