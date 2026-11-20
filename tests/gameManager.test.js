@@ -541,3 +541,18 @@ test('rematch carries bots', () => {
     assert.equal(newGame.players.filter(player => player.isBot).length, 1);
     assert.equal(manager.games.has('r1'), false);
 });
+
+test('bot names come from the fixed list and are unique within a room', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    for (let index = 0; index < 5; index += 1) {
+        manager.handleAddBot(wsAnn);
+    }
+
+    const names = manager.games.get('r1').players.filter(player => player.isBot).map(player => player.name);
+    const allowed = ['Pedro', 'Lucía', 'Mateo', 'Valentina', 'Diego', 'Camila'];
+    assert.equal(names.length, 5);
+    assert.ok(names.every(name => allowed.includes(name)));
+    assert.equal(new Set(names).size, 5);
+});

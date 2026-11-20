@@ -44,7 +44,7 @@ function containsBlockedTerm(message, blockedTerms) {
     return blockedTerms.some(term => normalizedMessage.includes(term));
 }
 
-const BOT_NAMES = ['Dusty', 'Pip', 'Marlow', 'Juniper', 'Bosun', 'Tilly', 'Rook', 'Saffron', 'Gideon', 'Nell', 'Flint', 'Wren'];
+const BOT_NAMES = ['Pedro', 'Lucía', 'Mateo', 'Valentina', 'Diego', 'Camila'];
 
 function createShortRoomCode(length = 4) {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
