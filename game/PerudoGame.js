@@ -295,6 +295,7 @@ class PerudoGame {
                 name: item.name,
                 diceCount: item.diceCount,
                 isSpectator: Boolean(item.isSpectator),
+                isBot: Boolean(item.isBot),
                 isDisconnected: Boolean(item.isDisconnected),
                 isEliminated: !item.isSpectator && item.diceCount <= 0
             })),

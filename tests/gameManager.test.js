@@ -389,3 +389,155 @@ test('create_room puts the player in a fresh 4-char room', () => {
     assert.equal(game.players.length, 1);
     assert.equal(game.players[0].name, 'Ann');
 });
+
+function joinRoom(manager, name, roomId) {
+    const ws = { id: `ws-${name}` };
+    manager.join(ws, { type: 'join', name, roomId });
+    return ws;
+}
+
+test('add_bot seats a named computer player', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+
+    manager.handleAddBot(wsAnn);
+    manager.handleAddBot(wsAnn);
+
+    const game = manager.games.get('r1');
+    assert.equal(game.players.length, 3);
+    const bots = game.players.filter(player => player.isBot);
+    assert.equal(bots.length, 2);
+    assert.ok(bots.every(bot => bot.name && bot.ws === null && bot.authType === 'bot'));
+    assert.notEqual(bots[0].name, bots[1].name);
+
+    const lastState = sent.findLast(entry => entry.ws === wsAnn && entry.payload.type === 'state').payload;
+    const stateBots = lastState.players.filter(player => player.isBot);
+    assert.equal(stateBots.length, 2);
+    assert.equal(lastState.players.find(player => player.name === 'Ann').isBot, false);
+});
+
+test('add_bot is rejected once the game started', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    manager.handleStartGame(wsAnn);
+
+    sent.length = 0;
+    manager.handleAddBot(wsAnn);
+
+    assert.deepEqual(sent[sent.length - 1].payload, {
+        type: 'error',
+        message: 'Computer players can only be changed before the game starts.'
+    });
+    assert.equal(manager.games.get('r1').players.length, 2);
+});
+
+test('add_bot is rejected when 6 seats are full', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    for (let index = 0; index < 5; index += 1) {
+        manager.handleAddBot(wsAnn);
+    }
+    assert.equal(manager.games.get('r1').players.length, 6);
+
+    sent.length = 0;
+    manager.handleAddBot(wsAnn);
+
+    assert.equal(sent[sent.length - 1].payload.type, 'error');
+    assert.match(sent[sent.length - 1].payload.message, /full/i);
+    assert.equal(manager.games.get('r1').players.length, 6);
+});
+
+test('spectators cannot add computer players', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    manager.handleStartGame(wsAnn);
+    const wsLate = joinRoom(manager, 'Late', 'r1');
+
+    sent.length = 0;
+    manager.handleAddBot(wsLate);
+
+    assert.deepEqual(sent[sent.length - 1].payload, {
+        type: 'error',
+        message: 'Spectators cannot add computer players.'
+    });
+});
+
+test('remove_bot removes only bots', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    const game = manager.games.get('r1');
+    const ann = game.players.find(player => !player.isBot);
+    const bot = game.players.find(player => player.isBot);
+
+    sent.length = 0;
+    manager.handleRemoveBot(wsAnn, { playerId: ann.id });
+    assert.deepEqual(sent[sent.length - 1].payload, {
+        type: 'error',
+        message: 'That player is not a computer player.'
+    });
+    assert.equal(game.players.length, 2);
+
+    manager.handleRemoveBot(wsAnn, { playerId: bot.id });
+    assert.equal(game.players.length, 1);
+    assert.equal(game.players[0].id, ann.id);
+});
+
+test('room with only bots is deleted when the last human leaves', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    manager.handleAddBot(wsAnn);
+
+    manager.handleLeave(wsAnn);
+
+    assert.equal(manager.games.has('r1'), false);
+});
+
+test('disconnected human still counts as human', () => {
+    const sent = [];
+    const manager = createManager(sent, { reconnectGraceMs: 5000 });
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+
+    manager.removeBySocket(wsAnn);
+
+    assert.equal(manager.games.has('r1'), true);
+    manager.clearPendingReconnectTokensForRoom('r1');
+});
+
+test('rematch carries bots', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    const wsBob = joinRoom(manager, 'Bob', 'r1');
+    manager.handleAddBot(wsAnn);
+    const oldGame = manager.games.get('r1');
+    const oldBot = oldGame.players.find(player => player.isBot);
+    oldGame.round.setGameOver(oldGame.players[0].id);
+
+    manager.handleRematch(wsAnn);
+
+    const newRoomId = manager.clientToRoom.get(wsAnn);
+    const newGame = manager.games.get(newRoomId);
+    assert.equal(newGame.players.length, 2);
+    const newBot = newGame.players.find(player => player.isBot);
+    assert.ok(newBot);
+    assert.equal(newBot.name, oldBot.name);
+    assert.notEqual(newBot.id, oldBot.id);
+
+    manager.handleRematch(wsBob);
+
+    assert.equal(manager.clientToRoom.get(wsBob), newRoomId);
+    assert.equal(newGame.players.length, 3);
+    assert.equal(newGame.players.filter(player => player.isBot).length, 1);
+    assert.equal(manager.games.has('r1'), false);
+});

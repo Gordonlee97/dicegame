@@ -44,6 +44,8 @@ function containsBlockedTerm(message, blockedTerms) {
     return blockedTerms.some(term => normalizedMessage.includes(term));
 }
 
+const BOT_NAMES = ['Dusty', 'Pip', 'Marlow', 'Juniper', 'Bosun', 'Tilly', 'Rook', 'Saffron', 'Gideon', 'Nell', 'Flint', 'Wren'];
+
 function createShortRoomCode(length = 4) {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let code = '';
@@ -240,14 +242,9 @@ class GameManager {
         game.addLog(`${player.name} disconnected for too long and was removed.`);
         game.removePlayerById(player.id);
 
-        if (game.players.length === 0) {
+        if (!this.hasHumans(game)) {
             this.finalizeMatchIfNeeded(game, 'room_empty');
-            this.roomChatHistory.delete(roomId);
-            this.roomUiSettings.delete(roomId);
-            this.games.delete(roomId);
-            this.matchSessions.delete(roomId);
-            this.completedMatchRooms.delete(roomId);
-            this.clearPendingReconnectTokensForRoom(roomId);
+            this.deleteRoom(roomId);
             return;
         }
 
@@ -313,6 +310,10 @@ class GameManager {
     }
 
     getParticipantKey(player) {
+        if (player.isBot) {
+            return `bot:${player.id}`;
+        }
+
         if (player.authType === 'account' && player.accountUsername) {
             return `account:${String(player.accountUsername).toLowerCase()}`;
         }
@@ -564,6 +565,116 @@ class GameManager {
         return true;
     }
 
+    hasHumans(game) {
+        return game.players.some(player => !player.isBot);
+    }
+
+    deleteRoom(roomId) {
+        this.roomChatHistory.delete(roomId);
+        this.roomUiSettings.delete(roomId);
+        this.games.delete(roomId);
+        this.matchSessions.delete(roomId);
+        this.completedMatchRooms.delete(roomId);
+        this.clearPendingReconnectTokensForRoom(roomId);
+        this.botController?.cancelRoom(roomId);
+    }
+
+    pickBotName(game, preferredName) {
+        const taken = new Set(game.players.map(player => player.name));
+        if (preferredName && !taken.has(preferredName)) {
+            return preferredName;
+        }
+
+        const available = BOT_NAMES.filter(name => !taken.has(name));
+        if (available.length > 0) {
+            return available[crypto.randomInt(available.length)];
+        }
+
+        return `Bot ${game.players.length + 1}`;
+    }
+
+    seatBot(game, preferredName) {
+        const bot = {
+            id: crypto.randomUUID(),
+            name: this.pickBotName(game, preferredName),
+            isBot: true,
+            ws: null,
+            authType: 'bot',
+            accountUserId: null,
+            accountUsername: null
+        };
+
+        const result = game.addPlayer(bot);
+        if (!result.ok) {
+            return result;
+        }
+
+        const seated = game.findPlayerById(bot.id);
+        this.ensureParticipant(this.getOrCreateMatchSession(game), seated);
+        return { ok: true, bot: seated };
+    }
+
+    handleAddBot(ws) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        if (context.player.isSpectator) {
+            this.send(ws, { type: 'error', message: 'Spectators cannot add computer players.' });
+            return;
+        }
+
+        if (context.game.round.phase !== 'waiting' || context.game.round.roundNumber > 0) {
+            this.send(ws, { type: 'error', message: 'Computer players can only be changed before the game starts.' });
+            return;
+        }
+
+        const result = this.seatBot(context.game);
+        if (!result.ok) {
+            this.send(ws, { type: 'error', message: result.error });
+            return;
+        }
+
+        this.appendMatchAction(context.game, 'add_bot', context.player, {
+            botId: result.bot.id,
+            botName: result.bot.name
+        });
+        this.broadcastState(context.game);
+    }
+
+    handleRemoveBot(ws, payload) {
+        const context = this.getContext(ws);
+        if (!context) {
+            return;
+        }
+
+        if (context.player.isSpectator) {
+            this.send(ws, { type: 'error', message: 'Spectators cannot add computer players.' });
+            return;
+        }
+
+        if (context.game.round.phase !== 'waiting' || context.game.round.roundNumber > 0) {
+            this.send(ws, { type: 'error', message: 'Computer players can only be changed before the game starts.' });
+            return;
+        }
+
+        const target = context.game.findPlayerById(String(payload && payload.playerId || ''));
+        if (!target || !target.isBot) {
+            this.send(ws, { type: 'error', message: 'That player is not a computer player.' });
+            return;
+        }
+
+        const session = this.getOrCreateMatchSession(context.game);
+        this.markParticipantLeft(session, target);
+        context.game.removePlayerById(target.id);
+        this.appendMatchAction(context.game, 'remove_bot', context.player, {
+            botId: target.id,
+            botName: target.name
+        });
+        this.broadcastState(context.game);
+    }
+
     broadcastState(game) {
         for (const player of game.players) {
             this.send(player.ws, this.buildStateForClient(game, player));
@@ -799,14 +910,9 @@ class GameManager {
 
         game.removePlayerBySocket(ws);
 
-        if (game.players.length === 0) {
+        if (!this.hasHumans(game)) {
             this.finalizeMatchIfNeeded(game, 'room_empty');
-            this.roomChatHistory.delete(roomId);
-            this.roomUiSettings.delete(roomId);
-            this.games.delete(roomId);
-            this.matchSessions.delete(roomId);
-            this.completedMatchRooms.delete(roomId);
-            this.clearPendingReconnectTokensForRoom(roomId);
+            this.deleteRoom(roomId);
             return;
         }
 
@@ -1081,6 +1187,8 @@ class GameManager {
             accountUsername: context.player.accountUsername || null
         };
 
+        const sourceBots = sourceGame.players.filter(item => item.isBot);
+
         this.finalizeMatchIfNeeded(sourceGame, 'rematch');
 
         this.appendMatchAction(context.game, 'rematch', context.player, {
@@ -1093,15 +1201,19 @@ class GameManager {
         this.clientToRoom.delete(ws);
         sourceGame.removePlayerBySocket(ws);
 
-        if (sourceGame.players.length === 0) {
+        if (!this.hasHumans(sourceGame)) {
             this.finalizeMatchIfNeeded(sourceGame, 'rematch_room_empty');
-            this.games.delete(sourceRoomId);
-            this.roomUiSettings.delete(sourceRoomId);
-            this.matchSessions.delete(sourceRoomId);
-            this.completedMatchRooms.delete(sourceRoomId);
+            this.deleteRoom(sourceRoomId);
         } else {
             this.finalizeMatchIfNeeded(sourceGame, 'rematch');
             this.broadcastState(sourceGame);
+        }
+
+        if (!this.games.has(targetRoomId)) {
+            const rematchGame = this.getOrCreateGame(targetRoomId);
+            for (const bot of sourceBots) {
+                this.seatBot(rematchGame, bot.name);
+            }
         }
 
         const joined = this.transferPlayerToRoom(ws, playerProfile, targetRoomId);

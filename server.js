@@ -341,6 +341,16 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'add_bot') {
+                    gameManager.handleAddBot(ws);
+                    return;
+                }
+
+                if (data.type === 'remove_bot') {
+                    gameManager.handleRemoveBot(ws, data);
+                    return;
+                }
+
                 if (data.type === 'end_game') {
                     gameManager.handleEndGame(ws);
                     return;
