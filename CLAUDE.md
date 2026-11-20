@@ -20,6 +20,7 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 | `game/GameManager.js` | Room/player management, WebSocket message routing |
 | `game/RuleValidator.js` | Bid validation logic |
 | `game/RoundState.js` | Per-round state model |
+| `game/Bid.js` | Bid value object (quantity/face/playerId) |
 | `tests/perudoGame.test.js` | Unit tests for game logic |
 | `tests/gameManager.test.js` | Unit tests for room/player management |
 | `tests/websocket.integration.test.js` | Integration tests over live WebSocket |
@@ -41,7 +42,11 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 | `dudo` | Challenge the current bid |
 | `calza` | Exact-count call |
 | `chat_message` | Send a chat message to the room |
-| `join_as_player` | Spectator explicitly joins as a player |
+| `join_game` | Spectator explicitly joins as a player |
+| `end_game` | End the current game, reset room to waiting state |
+| `set_turn_timer` | Configure the per-turn timer |
+| `rematch` | Start a new game in a fresh room with the same players |
+| `leave` | Player leaves the room |
 
 ## Engineering practices
 
@@ -92,4 +97,3 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 - Backend changes deploy via GitHub Actions to Azure App Service.
 - Frontend changes deploy via GitHub Actions to Azure Static Web App.
 - Do not push to `main` without passing tests.
-- `HANDOFF.md` in the repo root is stale and can be deleted — its content is superseded by this file.
