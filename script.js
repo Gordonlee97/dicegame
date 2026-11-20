@@ -16,7 +16,6 @@ const inviteLinkField = document.getElementById('invite-link-field');
 const MAX_SEATS = 6;
 let inviteFeedbackTimer = null;
 let openResolutionEventId = null;
-const revealDoneSentIds = new Set();
 const startRoomButton = document.getElementById('start-room-button');
 const authModeToggleButton = document.getElementById('auth-mode-toggle');
 const roomCodePanel = document.getElementById('room-code-panel');
@@ -2005,13 +2004,13 @@ function getResolutionKey(resolution, roundNumber = 0) {
 function closeResolutionModal() {
     const closedEventId = openResolutionEventId;
     openResolutionEventId = null;
+    // No client-side dedupe: event ids restart at 0 for every new game/room, and a
+    // repeated reveal_done is a no-op on the server.
     if (
         Number.isInteger(closedEventId)
-        && !revealDoneSentIds.has(closedEventId)
         && state.socket
         && state.socket.readyState === WebSocket.OPEN
     ) {
-        revealDoneSentIds.add(closedEventId);
         state.socket.send(JSON.stringify({ type: 'reveal_done', eventId: closedEventId }));
     }
 
