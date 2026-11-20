@@ -1,4 +1,4 @@
-import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName } from './client/invite.js';
+import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName, shareInvite } from './client/invite.js';
 
 const diceContainer = document.getElementById('dice-container');
 const bidButton = document.getElementById('bid-button');
@@ -8,6 +8,14 @@ const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
 const endGameButton = document.getElementById('end-game-button');
 const startGameButton = document.getElementById('start-game-button');
+const waitingRoomPanel = document.getElementById('waiting-room-panel');
+const inviteFriendsButton = document.getElementById('invite-friends-button');
+const addBotButton = document.getElementById('add-bot-button');
+const inviteFeedback = document.getElementById('invite-feedback');
+const MAX_SEATS = 6;
+let inviteFeedbackTimer = null;
+let openResolutionEventId = null;
+const revealDoneSentIds = new Set();
 const startRoomButton = document.getElementById('start-room-button');
 const authModeToggleButton = document.getElementById('auth-mode-toggle');
 const roomCodePanel = document.getElementById('room-code-panel');
@@ -1213,6 +1221,13 @@ function renderPlayers() {
             name.appendChild(selfTag);
         }
 
+        if (player.isBot) {
+            const botTag = document.createElement('span');
+            botTag.className = 'player-bot-tag';
+            botTag.textContent = 'computer';
+            name.appendChild(botTag);
+        }
+
         if (isEliminated) {
             const eliminatedTag = document.createElement('span');
             eliminatedTag.className = 'player-eliminated-tag';
@@ -1229,6 +1244,20 @@ function renderPlayers() {
         playerInfo.className = 'player-info';
 
         playerInfo.append(name);
+
+        if (player.isBot && state.phase === 'waiting' && state.roundNumber === 0) {
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'player-remove-button';
+            removeButton.textContent = 'remove';
+            removeButton.setAttribute('aria-label', `Remove computer player ${player.name}`);
+            removeButton.addEventListener('click', () => {
+                if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                    state.socket.send(JSON.stringify({ type: 'remove_bot', playerId: player.id }));
+                }
+            });
+            playerInfo.append(removeButton);
+        }
 
         if (shouldShowDiceInCards) {
             let diceDisplay;
@@ -1973,6 +2002,18 @@ function getResolutionKey(resolution, roundNumber = 0) {
 }
 
 function closeResolutionModal() {
+    const closedEventId = openResolutionEventId;
+    openResolutionEventId = null;
+    if (
+        Number.isInteger(closedEventId)
+        && !revealDoneSentIds.has(closedEventId)
+        && state.socket
+        && state.socket.readyState === WebSocket.OPEN
+    ) {
+        revealDoneSentIds.add(closedEventId);
+        state.socket.send(JSON.stringify({ type: 'reveal_done', eventId: closedEventId }));
+    }
+
     resolutionModal.classList.add('hidden');
     state.deferDiceRollUntilResolutionClose = false;
 
@@ -2069,6 +2110,8 @@ function openDudoRevealModal(resolution) {
     if (!resolution || !Array.isArray(resolution.revealedDice) || !resolution.bid) {
         return;
     }
+
+    openResolutionEventId = Number.isInteger(resolution.eventId) ? resolution.eventId : null;
 
     for (const playerDice of resolution.revealedDice) {
         ensurePlayerColor(playerDice.playerName, playerDice.playerId || '');
@@ -2215,6 +2258,10 @@ function updateActionAvailability() {
     chatToggleButton.disabled = !canChat;
     chatSendButton.disabled = !canChat;
     updateWaitingStartNotice();
+
+    waitingRoomPanel.classList.toggle('hidden', !showStartGame);
+    addBotButton.disabled = !showStartGame || state.players.length >= MAX_SEATS;
+    inviteFriendsButton.disabled = !state.roomId;
 
     if (!canAct) {
         closeQuantityOverflowModal();
@@ -2816,6 +2863,31 @@ function requestStartGame() {
     playTone(680, 95, 0.015, 'triangle');
 }
 
+function requestAddBot() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN || addBotButton.disabled) {
+        return;
+    }
+
+    state.socket.send(JSON.stringify({ type: 'add_bot' }));
+    playTone(680, 95, 0.015, 'triangle');
+}
+
+async function handleInviteFriends() {
+    if (!state.roomId) {
+        return;
+    }
+
+    const result = await shareInvite(state.roomId);
+    const message = result === 'copied'
+        ? 'Link copied'
+        : (result === 'failed' ? "Couldn't copy the link" : '');
+    inviteFeedback.textContent = message;
+    clearTimeout(inviteFeedbackTimer);
+    if (message) {
+        inviteFeedbackTimer = setTimeout(() => { inviteFeedback.textContent = ''; }, 2500);
+    }
+}
+
 function requestJoinGame() {
     if (!state.socket || state.socket.readyState !== WebSocket.OPEN || startGameButton.disabled) {
         return;
@@ -2917,6 +2989,8 @@ roomIdInput.addEventListener('input', () => {
 leaveButton.addEventListener('click', leaveMatch);
 endGameButton.addEventListener('click', requestEndGame);
 startGameButton.addEventListener('click', handlePrimaryHeaderButtonClick);
+addBotButton.addEventListener('click', requestAddBot);
+inviteFriendsButton.addEventListener('click', handleInviteFriends);
 bidButton.addEventListener('click', placeBid);
 calzaButton.addEventListener('click', callCalza);
 dudoButton.addEventListener('click', callDudo);

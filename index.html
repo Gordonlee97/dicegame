@@ -108,6 +108,12 @@
                 <p id="status-game" class="turn-banner" aria-live="polite">Waiting for players...</p>
                 <p id="waiting-start-notice" class="waiting-start-notice">Waiting for players... the game starts only after someone clicks Start Game.</p>
 
+                <div id="waiting-room-panel" class="waiting-room-panel hidden">
+                    <button id="invite-friends-button" type="button" class="waiting-room-button">Invite friends</button>
+                    <button id="add-bot-button" type="button" class="waiting-room-button">Add computer player</button>
+                    <span id="invite-feedback" class="waiting-room-feedback" aria-live="polite"></span>
+                </div>
+
                 <div class="priority-grid">
                     <article class="priority-card current-bid-card">
                         <p class="card-kicker">Active Bid</p>

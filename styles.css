@@ -109,8 +109,7 @@ p {
     to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-#room-id,
-#room-id-account {
+#room-id {
     font-family: "SF Mono", "Fira Code", "Consolas", monospace;
     font-size: 1.05rem;
     font-weight: 700;
@@ -459,9 +458,65 @@ body.dark-mode .link-button {
     color: var(--muted);
 }
 
-.player-eliminated-tag {
+.player-eliminated-tag,
+.player-bot-tag {
     margin-left: 0.35ch;
     color: var(--muted);
+}
+
+.player-remove-button {
+    margin-top: 4px;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.player-remove-button:hover {
+    border-color: var(--critical);
+    color: var(--critical);
+}
+
+.waiting-room-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+}
+
+.waiting-room-panel.hidden {
+    display: none;
+}
+
+.waiting-room-button {
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.waiting-room-button:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+.waiting-room-feedback {
+    color: var(--muted);
+    font-size: 0.86rem;
+}
+
+@media (max-width: 430px) {
+    .waiting-room-button {
+        flex: 1 1 100%;
+    }
 }
 
 .player-dice-icons {
