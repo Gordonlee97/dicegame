@@ -65,7 +65,7 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
   - `node --check client/invite.js`
   - `node --check game/PerudoGame.js`
   - `node --check game/GameManager.js`
-  - `npm test` → expect **70 passing, 0 failing**
+  - `npm test` → expect **71 passing, 0 failing**
 - **Restart backend** after any change to `server.js` or `game/*`, then verify: `Invoke-WebRequest http://localhost:8080/health`
 - **Preserve reveal sequencing** — Dudo/Calza next-round visuals are deferred until the reveal modal closes. Do not break this pattern.
 - **Preserve reconnect/spectator logic** — reconnect tokens, grace window, and spectator-to-player promotion must remain intact.

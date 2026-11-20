@@ -104,7 +104,8 @@ async function readJsonBody(req) {
 }
 
 function serveFile(req, res) {
-    const requestPath = req.url === '/' ? '/index.html' : req.url;
+    const urlPath = req.url.split(/[?#]/)[0];
+    const requestPath = urlPath === '/' ? '/index.html' : urlPath;
     let decodedPath;
 
     try {

@@ -1260,6 +1260,7 @@ body.dark-mode .link-button {
 
 .option-btn,
 #join-button,
+#start-room-button,
 #leave-button,
 #end-game-button,
 #bid-button,
@@ -1421,6 +1422,7 @@ body.dark-mode .link-button {
 }
 
 #join-button,
+#start-room-button,
 #bid-button,
 #account-submit-button {
     background: linear-gradient(180deg, #eef6ff 0%, #dcecff 100%);
@@ -1436,6 +1438,7 @@ body.dark-mode .link-button {
 }
 
 #join-button:hover:not(:disabled),
+#start-room-button:hover:not(:disabled),
 #bid-button:hover:not(:disabled),
 #account-submit-button:hover:not(:disabled) {
     filter: none;
@@ -2577,6 +2580,7 @@ body.dark-mode .face-option.selected:not(:disabled) .face-option-die {
 }
 
 body.dark-mode #join-button,
+body.dark-mode #start-room-button,
 body.dark-mode #bid-button,
 body.dark-mode #account-submit-button {
     background: linear-gradient(180deg, #4f8fe8 0%, #3b78ce 100%);
@@ -2585,6 +2589,7 @@ body.dark-mode #account-submit-button {
 }
 
 body.dark-mode #join-button:hover:not(:disabled),
+body.dark-mode #start-room-button:hover:not(:disabled),
 body.dark-mode #bid-button:hover:not(:disabled),
 body.dark-mode #account-submit-button:hover:not(:disabled) {
     background: linear-gradient(180deg, #5a9af2 0%, #447fd6 100%);
@@ -3359,6 +3364,7 @@ body.dark-mode .victory-message {
 @media (hover: none) {
     .option-btn:hover:not(:disabled),
     #join-button:hover:not(:disabled),
+    #start-room-button:hover:not(:disabled),
     #bid-button:hover:not(:disabled),
     #calza-button:hover:not(:disabled),
     #dudo-button:hover:not(:disabled),
@@ -3492,4 +3498,19 @@ body.dark-mode .victory-message {
     #resolution-text {
         font-size: 0.8rem;
     }
+}
+
+.invite-link-field {
+    flex: 1 1 100%;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.86rem;
+}
+
+.invite-link-field.hidden {
+    display: none;
 }

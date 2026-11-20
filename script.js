@@ -1,4 +1,4 @@
-import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName, shareInvite } from './client/invite.js';
+import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName, shareInvite, buildInviteUrl } from './client/invite.js';
 
 const diceContainer = document.getElementById('dice-container');
 const bidButton = document.getElementById('bid-button');
@@ -12,6 +12,7 @@ const waitingRoomPanel = document.getElementById('waiting-room-panel');
 const inviteFriendsButton = document.getElementById('invite-friends-button');
 const addBotButton = document.getElementById('add-bot-button');
 const inviteFeedback = document.getElementById('invite-feedback');
+const inviteLinkField = document.getElementById('invite-link-field');
 const MAX_SEATS = 6;
 let inviteFeedbackTimer = null;
 let openResolutionEventId = null;
@@ -980,7 +981,7 @@ function attachCopyButton(spanEl, getCode) {
 }
 
 function renderLobbyCode() {
-    const code = state.roomId || '-';
+    const code = (state.roomId || '-').toUpperCase();
     if (lobbyCodeText) {
         lobbyCodeText.textContent = code;
         attachCopyButton(lobbyCodeText, () => state.roomId || '');
@@ -2878,12 +2879,18 @@ async function handleInviteFriends() {
     }
 
     const result = await shareInvite(state.roomId);
+    inviteLinkField.classList.toggle('hidden', result !== 'failed');
+    if (result === 'failed') {
+        inviteLinkField.value = buildInviteUrl(state.roomId, window.location.origin);
+        inviteLinkField.focus();
+        inviteLinkField.select();
+    }
     const message = result === 'copied'
         ? 'Link copied'
         : (result === 'failed' ? "Couldn't copy the link" : '');
     inviteFeedback.textContent = message;
     clearTimeout(inviteFeedbackTimer);
-    if (message) {
+    if (message && result !== 'failed') {
         inviteFeedbackTimer = setTimeout(() => { inviteFeedback.textContent = ''; }, 2500);
     }
 }

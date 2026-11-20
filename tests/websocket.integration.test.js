@@ -282,6 +282,12 @@ test.after(async () => {
     await stopServer(server);
 });
 
+test('static server ignores the query string so invite links load', async () => {
+    const response = await fetch(`${server.baseUrl}/?room=abcd`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') || '', /text\/html/);
+});
+
 test('websocket join waits until start_game then enters bidding', async () => {
     const roomId = `ws-join-${Date.now()}`;
     const alice = await connectAndJoin(server.wsUrl, 'Alice', roomId);
