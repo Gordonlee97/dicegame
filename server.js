@@ -311,6 +311,11 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'create_room') {
+                    gameManager.createRoom(ws, data);
+                    return;
+                }
+
                 if (data.type === 'bid') {
                     gameManager.handleBid(ws, data);
                     return;

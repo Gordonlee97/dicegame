@@ -4,20 +4,12 @@ const PerudoGame = require('./PerudoGame');
 
 function sanitizeName(name) {
     const trimmed = String(name || '').trim();
-    if (!trimmed) {
-        return 'Player';
-    }
-
     return trimmed.slice(0, 20);
 }
 
 function sanitizeRoomId(roomId) {
     const normalized = String(roomId || '').trim().toLowerCase();
-    if (!normalized) {
-        return 'lobby';
-    }
-
-    return normalized.replace(/[^a-z0-9_-]/g, '').slice(0, 24) || 'lobby';
+    return normalized.replace(/[^a-z0-9_-]/g, '').slice(0, 24);
 }
 
 function sanitizeChatMessage(message) {
@@ -495,7 +487,7 @@ class GameManager {
         };
     }
 
-    createRematchRoomId(roomId) {
+    createUniqueRoomCode() {
         let candidate;
 
         do {
@@ -503,6 +495,10 @@ class GameManager {
         } while (this.games.has(candidate));
 
         return candidate;
+    }
+
+    createRematchRoomId() {
+        return this.createUniqueRoomCode();
     }
 
     shufflePlayerOrder(game) {
@@ -608,7 +604,7 @@ class GameManager {
             return {
                 ok: true,
                 identity: {
-                    name: sanitizeName(account.displayName),
+                    name: sanitizeName(account.displayName) || sanitizeName(account.username),
                     authType: 'account',
                     accountUserId: account.userId,
                     accountUsername: account.username
@@ -616,10 +612,15 @@ class GameManager {
             };
         }
 
+        const guestName = sanitizeName(incoming.name);
+        if (!guestName) {
+            return { ok: false, error: 'Enter a name to join.' };
+        }
+
         return {
             ok: true,
             identity: {
-                name: sanitizeName(incoming.name),
+                name: guestName,
                 authType: 'guest',
                 accountUserId: null,
                 accountUsername: null
@@ -677,6 +678,10 @@ class GameManager {
         return { ok: true };
     }
 
+    createRoom(ws, incoming) {
+        this.join(ws, { ...incoming, roomId: this.createUniqueRoomCode(), reconnectToken: '' });
+    }
+
     join(ws, incoming) {
         if (this.clientToRoom.has(ws)) {
             this.send(ws, { type: 'error', message: 'Already joined a room.' });
@@ -684,6 +689,11 @@ class GameManager {
         }
 
         const roomId = sanitizeRoomId(incoming.roomId);
+        if (!roomId) {
+            this.send(ws, { type: 'error', message: 'Enter a room code.' });
+            return;
+        }
+
         const identityResult = this.resolveJoinIdentity(incoming);
         if (!identityResult.ok) {
             this.send(ws, { type: 'error', message: identityResult.error });

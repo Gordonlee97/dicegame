@@ -577,3 +577,33 @@ test('public registration creates account and can join room immediately', async 
         await user.client.close();
     }
 });
+
+test('create_room over WebSocket returns joined with a new room', async () => {
+    const client = createClient(server.wsUrl);
+
+    try {
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Timed out opening websocket connection.')), 5000);
+            client.ws.once('open', () => {
+                clearTimeout(timer);
+                resolve();
+            });
+            client.ws.once('error', error => {
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+
+        client.send({ type: 'create_room', name: 'Host' });
+        const joined = await client.waitFor(message => message.type === 'joined');
+        const state = await client.waitFor(
+            message => message.type === 'state' && Array.isArray(message.players) && message.players.length === 1
+        );
+
+        assert.equal(typeof joined.playerId, 'string');
+        assert.match(joined.roomId, /^[a-z0-9]{4}$/);
+        assert.equal(state.players[0].name, 'Host');
+    } finally {
+        await client.close();
+    }
+});

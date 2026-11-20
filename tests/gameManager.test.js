@@ -345,3 +345,47 @@ test('disconnect holds seat during grace window and reconnect restores same play
     assert.ok(restoredAlice);
     assert.equal(restoredAlice.isDisconnected, false);
 });
+
+test('join without a name is rejected', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const ws = { id: 'ws-noname' };
+
+    manager.join(ws, { type: 'join', name: '  ', roomId: 'abcd' });
+
+    const last = sent[sent.length - 1];
+    assert.deepEqual(last.payload, { type: 'error', message: 'Enter a name to join.' });
+    assert.equal(manager.games.has('abcd'), false);
+});
+
+test('join without a room code is rejected', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const ws = { id: 'ws-nocode' };
+
+    manager.join(ws, { type: 'join', name: 'Ann', roomId: '' });
+
+    const last = sent[sent.length - 1];
+    assert.deepEqual(last.payload, { type: 'error', message: 'Enter a room code.' });
+    assert.equal(manager.games.has('lobby'), false);
+});
+
+test('create_room puts the player in a fresh 4-char room', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = { id: 'ws-ann' };
+    const wsBen = { id: 'ws-ben' };
+
+    manager.createRoom(wsAnn, { type: 'create_room', name: 'Ann' });
+    manager.createRoom(wsBen, { type: 'create_room', name: 'Ben' });
+
+    const roomA = manager.clientToRoom.get(wsAnn);
+    const roomB = manager.clientToRoom.get(wsBen);
+    assert.match(roomA, /^[a-z0-9]{4}$/);
+    assert.match(roomB, /^[a-z0-9]{4}$/);
+    assert.notEqual(roomA, roomB);
+
+    const game = manager.games.get(roomA);
+    assert.equal(game.players.length, 1);
+    assert.equal(game.players[0].name, 'Ann');
+});
