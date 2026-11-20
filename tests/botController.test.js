@@ -22,9 +22,11 @@ function createManager(sent, overrides = {}) {
 
 // Ann plus `botCount` bots in a started game. Rooms are torn down after the test
 // so no timers (bot or reconnect) outlive it.
-function setup(t, { botCount = 1, roomId = 'bots' } = {}) {
+function setup(t, { botCount = 1, roomId = 'bots', random } = {}) {
     const sent = [];
-    const manager = createManager(sent);
+    const manager = createManager(sent, random
+        ? { bot: { delayMinMs: 5, delayMaxMs: 10, fastForwardDelayMs: 1, revealWaitCapMs: 200, random } }
+        : {});
     const wsAnn = { id: 'ws-ann' };
     manager.join(wsAnn, { type: 'join', name: 'Ann', roomId });
     for (let index = 0; index < botCount; index += 1) {
@@ -220,4 +222,63 @@ test('fast-forward when the human is out', async t => {
 
     assert.equal(game.round.phase, 'game_over');
     assert.ok(bots.some(bot => bot.id === game.round.winnerPlayerId));
+});
+
+test('a throwing strategy still passes the bot turn', async t => {
+    const errors = t.mock.method(console, 'error', () => {});
+    let armed = false;
+    const random = () => {
+        if (armed) {
+            throw new Error('strategy exploded');
+        }
+        return 0.5;
+    };
+    const { manager, game, ann, bots } = setup(t, { random });
+    giveTurnTo(manager, game, bots[0]);
+    armed = true;
+
+    await sleep(50);
+
+    assert.equal(game.round.lastBid.playerId, bots[0].id);
+    assert.deepEqual([game.round.lastBid.quantity, game.round.lastBid.face], [1, 2]);
+    assert.equal(game.getCurrentTurnPlayer().id, ann.id);
+    assert.ok(errors.mock.callCount() >= 1);
+});
+
+test('a failing fallback is retried once and the bot turn then passes', async t => {
+    t.mock.method(console, 'error', () => {});
+    const { manager, game, ann, bots } = setup(t);
+    const realApplyBid = manager.applyBid.bind(manager);
+    let calls = 0;
+    manager.applyBid = (...args) => {
+        calls += 1;
+        if (calls <= 2) {
+            throw new Error('apply exploded');
+        }
+        return realApplyBid(...args);
+    };
+    giveTurnTo(manager, game, bots[0]);
+
+    await sleep(80);
+
+    assert.equal(calls, 3);
+    assert.equal(game.round.lastBid.playerId, bots[0].id);
+    assert.equal(game.getCurrentTurnPlayer().id, ann.id);
+});
+
+test('a bot that can never act gives up after one retry instead of looping', async t => {
+    const errors = t.mock.method(console, 'error', () => {});
+    const { manager, game, bots } = setup(t);
+    let calls = 0;
+    manager.applyBid = () => {
+        calls += 1;
+        throw new Error('apply exploded');
+    };
+    giveTurnTo(manager, game, bots[0]);
+
+    await sleep(100);
+
+    assert.equal(calls, 4);
+    assert.equal(game.round.lastBid, null);
+    assert.ok(errors.mock.calls.some(call => /waiting for the next state change/.test(String(call.arguments[0]))));
 });

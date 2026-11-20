@@ -194,6 +194,10 @@ class BotController {
         }
 
         this.clearAction(entry);
+        this.schedule(game, entry, snapshot);
+    }
+
+    schedule(game, entry, snapshot) {
         const delay = this.isFastForward(game)
             ? this.fastForwardDelayMs
             : this.delayMinMs + this.random() * (this.delayMaxMs - this.delayMinMs);
@@ -234,14 +238,49 @@ class BotController {
             return;
         }
 
+        // Never stall the game. If the chosen move fails (rejected or thrown) and the
+        // turn is untouched, play the always-legal fallback. If even that leaves the
+        // turn untouched, retry the whole turn once more after a delay, then give up
+        // until the next state change re-evaluates the room.
+        if (this.attempt(roomId, () => this.applyDecision(game, bot))
+            || !this.snapshotMatches(snapshot, game)) {
+            return;
+        }
+
+        if (this.attempt(roomId, () => this.applyFallback(game, bot))
+            || !this.isLiveGame(game)
+            || !this.snapshotMatches(snapshot, game)) {
+            return;
+        }
+
+        const current = this.rooms.get(roomId);
+        if (!current || current.actionTimer) {
+            return;
+        }
+
+        if (snapshot.isRetry) {
+            console.error(`Computer player ${bot.id} could not act in room ${roomId}; waiting for the next state change.`);
+            return;
+        }
+
+        this.schedule(game, current, { ...snapshot, isRetry: true });
+    }
+
+    // Runs one apply* call. True only if it succeeded; a rejection or a throw is logged.
+    attempt(roomId, action) {
         try {
-            this.act(game, bot);
+            const result = action();
+            if (result.ok) {
+                return true;
+            }
+            console.error(`Computer player move rejected in room ${roomId}: ${result.error}`);
         } catch (error) {
             console.error(`Computer player failed to act in room ${roomId}:`, error);
         }
+        return false;
     }
 
-    act(game, bot) {
+    applyDecision(game, bot) {
         const round = game.round;
         const decision = decideBotAction({
             ownDice: [...bot.currentDice],
@@ -252,28 +291,21 @@ class BotController {
             activePlayerCount: game.getActivePlayerCount()
         }, this.random);
 
-        let result;
         if (decision.action === 'bid') {
-            result = this.manager.applyBid(game, bot, new Bid(decision.quantity, decision.face, bot.id));
-        } else if (decision.action === 'calza') {
-            result = this.manager.applyCalza(game, bot);
-        } else {
-            result = this.manager.applyDudo(game, bot);
+            return this.manager.applyBid(game, bot, new Bid(decision.quantity, decision.face, bot.id));
         }
-
-        if (result.ok) {
-            return;
+        if (decision.action === 'calza') {
+            return this.manager.applyCalza(game, bot);
         }
+        return this.manager.applyDudo(game, bot);
+    }
 
-        // Never stall the game: dudo is always legal on our turn once there is a bid,
-        // and 1 x 2 is a legal opening bid in every round type.
-        const fallback = round.lastBid
+    // Dudo is always legal on our turn once there is a bid, and 1 x 2 is a legal
+    // opening bid in every round type.
+    applyFallback(game, bot) {
+        return game.round.lastBid
             ? this.manager.applyDudo(game, bot)
             : this.manager.applyBid(game, bot, new Bid(1, 2, bot.id));
-
-        if (!fallback.ok) {
-            console.error(`Computer player ${bot.id} could not act in room ${game.roomId}: ${fallback.error}`);
-        }
     }
 
     clearAction(entry) {
