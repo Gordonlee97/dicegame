@@ -951,6 +951,51 @@ class GameManager {
         return { game, player };
     }
 
+    applyBid(game, player, bid) {
+        const result = game.handleBid(player, bid);
+        if (!result.ok) {
+            return result;
+        }
+
+        this.appendMatchAction(game, 'bid', player, {
+            quantity: bid.quantity,
+            face: bid.face
+        });
+
+        this.broadcastState(game);
+        return { ok: true };
+    }
+
+    applyDudo(game, player) {
+        const result = game.handleDudo(player);
+        if (!result.ok) {
+            return result;
+        }
+
+        this.appendMatchAction(game, 'dudo', player, {
+            resolution: game.round.lastResolution || null
+        });
+
+        this.broadcastState(game);
+        this.finalizeMatchIfNeeded(game, 'dudo');
+        return { ok: true };
+    }
+
+    applyCalza(game, player) {
+        const result = game.handleCalza(player);
+        if (!result.ok) {
+            return result;
+        }
+
+        this.appendMatchAction(game, 'calza', player, {
+            resolution: game.round.lastResolution || null
+        });
+
+        this.broadcastState(game);
+        this.finalizeMatchIfNeeded(game, 'calza');
+        return { ok: true };
+    }
+
     handleBid(ws, payload) {
         const context = this.getContext(ws);
         if (!context) {
@@ -963,18 +1008,10 @@ class GameManager {
             return;
         }
 
-        const result = context.game.handleBid(context.player, bid);
+        const result = this.applyBid(context.game, context.player, bid);
         if (!result.ok) {
             this.send(ws, { type: 'error', message: result.error });
-            return;
         }
-
-        this.appendMatchAction(context.game, 'bid', context.player, {
-            quantity: bid.quantity,
-            face: bid.face
-        });
-
-        this.broadcastState(context.game);
     }
 
     handleDudo(ws) {
@@ -983,18 +1020,10 @@ class GameManager {
             return;
         }
 
-        const result = context.game.handleDudo(context.player);
+        const result = this.applyDudo(context.game, context.player);
         if (!result.ok) {
             this.send(ws, { type: 'error', message: result.error });
-            return;
         }
-
-        this.appendMatchAction(context.game, 'dudo', context.player, {
-            resolution: context.game.round.lastResolution || null
-        });
-
-        this.broadcastState(context.game);
-        this.finalizeMatchIfNeeded(context.game, 'dudo');
     }
 
     handleCalza(ws) {
@@ -1003,18 +1032,10 @@ class GameManager {
             return;
         }
 
-        const result = context.game.handleCalza(context.player);
+        const result = this.applyCalza(context.game, context.player);
         if (!result.ok) {
             this.send(ws, { type: 'error', message: result.error });
-            return;
         }
-
-        this.appendMatchAction(context.game, 'calza', context.player, {
-            resolution: context.game.round.lastResolution || null
-        });
-
-        this.broadcastState(context.game);
-        this.finalizeMatchIfNeeded(context.game, 'calza');
     }
 
     handleStartGame(ws) {
