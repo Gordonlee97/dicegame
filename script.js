@@ -1,4 +1,4 @@
-import { sanitizeRoomCode, readInviteCode, setRoomInUrl, loadSavedName, saveName, shareInvite, buildInviteUrl } from './client/invite.js';
+import { sanitizeRoomCode, readInviteCode, setRoomInUrl, clearRoomFromUrl, entryModeFor, loadSavedName, saveName, shareInvite, buildInviteUrl } from './client/invite.js';
 
 const diceContainer = document.getElementById('dice-container');
 const bidButton = document.getElementById('bid-button');
@@ -18,6 +18,7 @@ let inviteFeedbackTimer = null;
 let openResolutionEventId = null;
 const startRoomButton = document.getElementById('start-room-button');
 const authModeToggleButton = document.getElementById('auth-mode-toggle');
+const newGameLinkButton = document.getElementById('new-game-link');
 const roomCodePanel = document.getElementById('room-code-panel');
 const guestForm = document.getElementById('guest-form');
 const accountForm = document.getElementById('account-form');
@@ -760,6 +761,7 @@ function setJoinState(enabled) {
     startRoomButton.disabled = !enabled;
     playerNameInput.disabled = !enabled;
     authModeToggleButton.disabled = !enabled;
+    newGameLinkButton.disabled = !enabled;
     accountActionLoginButton.disabled = !enabled;
     accountActionRegisterButton.disabled = !enabled;
     accountUsernameInput.disabled = !enabled;
@@ -831,25 +833,51 @@ function setAuthMode(nextMode) {
     state.authMode = nextMode === 'account' ? 'account' : 'guest';
     const isAccountMode = state.authMode === 'account';
 
-    authModeToggleButton.textContent = isAccountMode ? 'Continue as guest' : 'Sign in (optional)';
     authModeToggleButton.setAttribute('aria-expanded', String(isAccountMode));
     guestForm.classList.toggle('hidden', isAccountMode);
     updateEntryMode();
     accountForm.classList.toggle('hidden', !isAccountMode);
 }
 
-// Invite mode: the page was opened from a ?room= link. The code is pre-filled and
-// the primary button joins that room instead of starting a new one.
-const inviteCode = readInviteCode();
+// Entry screen state. currentRoom is the room this tab was last seated in (updated on
+// every 'joined', including rematch transfers) so a dropped connection can offer
+// "Rejoin game CODE" with the stored reconnect token. leaving marks a deliberate leave.
+const entryState = { currentRoom: '', leaving: false };
+let entryView = null;
+
+function refreshEntryView(reason) {
+    entryView = entryModeFor({
+        urlCode: readInviteCode(),
+        currentRoom: entryState.currentRoom,
+        reason,
+        hasStoredToken: code => Boolean(getStoredReconnectToken(code))
+    });
+    roomIdInput.value = entryView.code.toUpperCase();
+    updateEntryMode();
+}
 
 function updateEntryMode() {
-    const isInvite = Boolean(inviteCode);
+    if (!entryView) {
+        return;
+    }
     const isAccountMode = state.authMode === 'account';
-    startRoomButton.textContent = isInvite ? `Join game ${inviteCode.toUpperCase()}` : 'Start a game';
-    // In invite mode the primary button is the join action, so the code field is not needed.
+    startRoomButton.textContent = entryView.primaryLabel;
+    // In invite/rejoin mode the primary button is the join action, so the code field is not needed.
     // Account sign-in otherwise keeps the one code field; its own submit button replaces Join.
-    roomCodePanel.classList.toggle('hidden', isInvite);
+    roomCodePanel.classList.toggle('hidden', !entryView.showCodePanel);
     joinButton.classList.toggle('hidden', isAccountMode);
+    newGameLinkButton.classList.toggle('hidden', !entryView.showNewGameLink);
+    // An account seat is only restored by signing in again, so say so when rejoining.
+    authModeToggleButton.textContent = isAccountMode
+        ? 'Continue as guest'
+        : (entryView.showSignInHint ? 'Signed in before? Sign in to rejoin' : 'Sign in (optional)');
+}
+
+function startNewGameInstead() {
+    entryState.currentRoom = '';
+    clearRoomFromUrl();
+    refreshEntryView('reset');
+    setStatus('Not connected.');
 }
 
 function setAccountAction(nextAction) {
@@ -2593,7 +2621,8 @@ function applyStateUpdate(payload) {
 async function connectToMatch(intent = 'auto') {
     const guestName = playerNameInput.value.trim();
     const isAccountMode = state.authMode === 'account';
-    const enteredCode = sanitizeRoomCode(inviteCode || roomIdInput.value);
+    const entryCode = entryView && entryView.mode !== 'fresh' ? entryView.code : '';
+    const enteredCode = sanitizeRoomCode(entryCode || roomIdInput.value);
     const isCreate = intent === 'create' || (intent === 'auto' && !enteredCode);
     const roomId = isCreate ? '' : enteredCode;
     let joinName = guestName;
@@ -2667,6 +2696,7 @@ async function connectToMatch(intent = 'auto') {
                 storeReconnectToken(state.roomId, state.reconnectToken);
             }
             if (state.roomId) {
+                entryState.currentRoom = state.roomId;
                 setRoomInUrl(state.roomId);
             }
             if (!isAccountMode) {
@@ -2715,7 +2745,13 @@ async function connectToMatch(intent = 'auto') {
     });
 
     socket.addEventListener('close', () => {
-        if (state.isConnected) {
+        // A socket replaced by a newer connectToMatch() must not reset the new session.
+        if (state.socket !== socket) {
+            return;
+        }
+        const leftDeliberately = entryState.leaving;
+        entryState.leaving = false;
+        if (state.isConnected && !leftDeliberately) {
             showEventToast('Connection lost – attempting to reconnect…', 'dudo', { holdMs: 3500, exitMs: 700 });
         }
         state.isConnected = false;
@@ -2769,7 +2805,17 @@ async function connectToMatch(intent = 'auto') {
         setJoinState(true);
         setLeaveState(false);
         showJoinScreen();
-        setStatus('Disconnected. Join again.');
+        if (leftDeliberately) {
+            entryState.currentRoom = '';
+            clearRoomFromUrl();
+            refreshEntryView('left');
+            setStatus('You left the table.');
+        } else {
+            refreshEntryView('disconnected');
+            setStatus(entryView.mode === 'rejoin'
+                ? 'Disconnected. Rejoin to take your seat back.'
+                : 'Disconnected. Join again.');
+        }
         closeResolutionModal();
         closeVictoryModal();
         closeConfirmModal();
@@ -2792,6 +2838,7 @@ function leaveMatch() {
 
     openConfirmModal('Leave this table? You can rejoin from the lobby screen.', () => {
         clearStoredReconnectToken(state.roomId);
+        entryState.leaving = true;
         if (state.socket && state.socket.readyState === WebSocket.OPEN) {
             state.socket.send(JSON.stringify({ type: 'leave' }));
         }
@@ -2944,7 +2991,8 @@ function toggleMobileActionConsole() {
 }
 
 joinButton.addEventListener('click', () => connectToMatch('join'));
-startRoomButton.addEventListener('click', () => connectToMatch(inviteCode ? 'join' : 'create'));
+startRoomButton.addEventListener('click', () => connectToMatch(entryView.mode === 'fresh' ? 'create' : 'join'));
+newGameLinkButton.addEventListener('click', startNewGameInstead);
 authModeToggleButton.addEventListener('click', () => {
     setAuthMode(state.authMode === 'account' ? 'guest' : 'account');
 });
@@ -3126,11 +3174,9 @@ setDarkMode(darkModeToggle.checked);
 state.ui.filterProfanities = profanityToggle.checked;
 turnTimerToggle.checked = state.ui.turnTimerEnabled;
 setPasswordVisibility(false);
+refreshEntryView('load');
 setAuthMode('guest');
 playerNameInput.value = loadSavedName();
-if (inviteCode) {
-    roomIdInput.value = inviteCode.toUpperCase();
-}
 setAccountAction('login');
 setLeaveState(false);
 updateActionAvailability();
