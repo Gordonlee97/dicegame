@@ -33,6 +33,7 @@ jobs:
           mkdir -p backend-dist
           cp server.js package.json package-lock.json index.html styles.css script.js config.js backend-dist/
           cp -r game backend-dist/
+          cp -r client backend-dist/
           cp -r auth backend-dist/
           cp -r node_modules backend-dist/
           cd backend-dist

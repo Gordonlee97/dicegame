@@ -104,7 +104,8 @@ async function readJsonBody(req) {
 }
 
 function serveFile(req, res) {
-    const requestPath = req.url === '/' ? '/index.html' : req.url;
+    const urlPath = req.url.split(/[?#]/)[0];
+    const requestPath = urlPath === '/' ? '/index.html' : urlPath;
     let decodedPath;
 
     try {
@@ -163,7 +164,13 @@ async function startServer() {
             duplicateWindowMs: Number(process.env.CHAT_DUPLICATE_WINDOW_MS) || undefined,
             blockedTerms: parseBlockedTerms(process.env.CHAT_BLOCKED_TERMS)
         },
-        reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || undefined
+        reconnectGraceMs: Number(process.env.RECONNECT_GRACE_MS) || undefined,
+        bot: {
+            delayMinMs: Number(process.env.BOT_DELAY_MIN_MS) || undefined,
+            delayMaxMs: Number(process.env.BOT_DELAY_MAX_MS) || undefined,
+            fastForwardDelayMs: Number(process.env.BOT_FAST_FORWARD_MS) || undefined,
+            revealWaitCapMs: Number(process.env.BOT_REVEAL_WAIT_CAP_MS) || undefined
+        }
     });
 
     const registerAdminKey = String(process.env.AUTH_ADMIN_KEY || '').trim();
@@ -311,6 +318,11 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'create_room') {
+                    gameManager.createRoom(ws, data);
+                    return;
+                }
+
                 if (data.type === 'bid') {
                     gameManager.handleBid(ws, data);
                     return;
@@ -326,6 +338,11 @@ async function startServer() {
                     return;
                 }
 
+                if (data.type === 'reveal_done') {
+                    gameManager.handleRevealDone(ws, data);
+                    return;
+                }
+
                 if (data.type === 'start_game') {
                     gameManager.handleStartGame(ws);
                     return;
@@ -333,6 +350,16 @@ async function startServer() {
 
                 if (data.type === 'join_game') {
                     gameManager.handleJoinGame(ws);
+                    return;
+                }
+
+                if (data.type === 'add_bot') {
+                    gameManager.handleAddBot(ws);
+                    return;
+                }
+
+                if (data.type === 'remove_bot') {
+                    gameManager.handleRemoveBot(ws, data);
                     return;
                 }
 

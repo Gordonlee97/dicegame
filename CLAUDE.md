@@ -20,6 +20,10 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 | `game/GameManager.js` | Room/player management, WebSocket message routing |
 | `game/RuleValidator.js` | Bid validation logic |
 | `game/RoundState.js` | Per-round state model |
+| `game/BotStrategy.js` | Computer-player decision logic (bid/dudo/calza) |
+| `game/BotController.js` | Server-side scheduler that drives computer players |
+| `client/invite.js` | Invite-link helpers (ES module): room code in URL, share/copy, saved name |
+| `game/Bid.js` | Bid value object (quantity/face/playerId) |
 | `tests/perudoGame.test.js` | Unit tests for game logic |
 | `tests/gameManager.test.js` | Unit tests for room/player management |
 | `tests/websocket.integration.test.js` | Integration tests over live WebSocket |
@@ -35,13 +39,21 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 
 | Type | Description |
 |---|---|
+| `create_room` | Create a new room and join it as host |
 | `join` | Join a room (with optional reconnect token or account JWT) |
 | `start_game` | Start the game from the waiting room |
 | `bid` | Place a bid |
 | `dudo` | Challenge the current bid |
 | `calza` | Exact-count call |
 | `chat_message` | Send a chat message to the room |
-| `join_as_player` | Spectator explicitly joins as a player |
+| `join_game` | Spectator explicitly joins as a player |
+| `end_game` | End the current game, reset room to waiting state |
+| `set_turn_timer` | Configure the per-turn timer |
+| `rematch` | Start a new game in a fresh room with the same players |
+| `add_bot` | Add a computer player (waiting room, before the game starts, max 6 seats) |
+| `remove_bot` | Remove a computer player (`playerId`; same restrictions as `add_bot`) |
+| `reveal_done` | Client closed the reveal modal (`eventId`); bots wait for this before playing on |
+| `leave` | Player leaves the room |
 
 ## Engineering practices
 
@@ -49,10 +61,11 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 - **Surgical changes** — touch only what is needed for the requested behavior.
 - **Validate immediately** after every edit:
   - `node --check server.js`
-  - `node --check script.js`
+  - `node --check script.js` (requires Node >= 22.7 because `script.js` is an ES module; otherwise `node --input-type=module --check < script.js`)
+  - `node --check client/invite.js`
   - `node --check game/PerudoGame.js`
   - `node --check game/GameManager.js`
-  - `npm test` → expect **31 passing, 0 failing**
+  - `npm test` → expect **83 passing, 0 failing**
 - **Restart backend** after any change to `server.js` or `game/*`, then verify: `Invoke-WebRequest http://localhost:8080/health`
 - **Preserve reveal sequencing** — Dudo/Calza next-round visuals are deferred until the reveal modal closes. Do not break this pattern.
 - **Preserve reconnect/spectator logic** — reconnect tokens, grace window, and spectator-to-player promotion must remain intact.
@@ -92,4 +105,3 @@ Browser-based Perudo (Liar's Dice) for 2–6 players. Node.js/WebSocket backend,
 - Backend changes deploy via GitHub Actions to Azure App Service.
 - Frontend changes deploy via GitHub Actions to Azure Static Web App.
 - Do not push to `main` without passing tests.
-- `HANDOFF.md` in the repo root is stale and can be deleted — its content is superseded by this file.

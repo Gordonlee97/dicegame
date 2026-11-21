@@ -1,3 +1,5 @@
+import { sanitizeRoomCode, readInviteCode, setRoomInUrl, clearRoomFromUrl, entryModeFor, loadSavedName, saveName, shareInvite, buildInviteUrl } from './client/invite.js';
+
 const diceContainer = document.getElementById('dice-container');
 const bidButton = document.getElementById('bid-button');
 const calzaButton = document.getElementById('calza-button');
@@ -6,8 +8,18 @@ const joinButton = document.getElementById('join-button');
 const leaveButton = document.getElementById('leave-button');
 const endGameButton = document.getElementById('end-game-button');
 const startGameButton = document.getElementById('start-game-button');
-const authModeGuestButton = document.getElementById('auth-mode-guest');
-const authModeAccountButton = document.getElementById('auth-mode-account');
+const waitingRoomPanel = document.getElementById('waiting-room-panel');
+const inviteFriendsButton = document.getElementById('invite-friends-button');
+const addBotButton = document.getElementById('add-bot-button');
+const inviteFeedback = document.getElementById('invite-feedback');
+const inviteLinkField = document.getElementById('invite-link-field');
+const MAX_SEATS = 6;
+let inviteFeedbackTimer = null;
+let openResolutionEventId = null;
+const startRoomButton = document.getElementById('start-room-button');
+const authModeToggleButton = document.getElementById('auth-mode-toggle');
+const newGameLinkButton = document.getElementById('new-game-link');
+const roomCodePanel = document.getElementById('room-code-panel');
 const guestForm = document.getElementById('guest-form');
 const accountForm = document.getElementById('account-form');
 const accountActionLoginButton = document.getElementById('account-action-login');
@@ -15,7 +27,6 @@ const accountActionRegisterButton = document.getElementById('account-action-regi
 const quantityButtons = document.getElementById('quantity-buttons');
 const faceButtons = document.getElementById('face-buttons');
 const playerNameInput = document.getElementById('player-name');
-const guestNameLabel = document.getElementById('guest-name-label');
 const accountUsernameLabel = document.getElementById('account-username-label');
 const accountPasswordLabel = document.getElementById('account-password-label');
 const accountDisplayNameLabel = document.getElementById('account-display-name-label');
@@ -24,7 +35,6 @@ const accountPasswordInput = document.getElementById('account-password');
 const accountPasswordToggleButton = document.getElementById('account-password-toggle');
 const accountDisplayNameInput = document.getElementById('account-display-name');
 const roomIdInput = document.getElementById('room-id');
-const roomIdAccountInput = document.getElementById('room-id-account');
 const accountSubmitButton = document.getElementById('account-submit-button');
 const playersList = document.getElementById('players-list');
 const joinStatusText = document.getElementById('status');
@@ -748,9 +758,10 @@ function maybeAnimateDudoCall(resolution) {
 
 function setJoinState(enabled) {
     joinButton.disabled = !enabled;
+    startRoomButton.disabled = !enabled;
     playerNameInput.disabled = !enabled;
-    authModeGuestButton.disabled = !enabled;
-    authModeAccountButton.disabled = !enabled;
+    authModeToggleButton.disabled = !enabled;
+    newGameLinkButton.disabled = !enabled;
     accountActionLoginButton.disabled = !enabled;
     accountActionRegisterButton.disabled = !enabled;
     accountUsernameInput.disabled = !enabled;
@@ -761,7 +772,6 @@ function setJoinState(enabled) {
     accountDisplayNameInput.disabled = !enabled;
     accountSubmitButton.disabled = !enabled;
     roomIdInput.disabled = !enabled;
-    roomIdAccountInput.disabled = !enabled;
 }
 
 function getApiBaseUrl() {
@@ -823,10 +833,51 @@ function setAuthMode(nextMode) {
     state.authMode = nextMode === 'account' ? 'account' : 'guest';
     const isAccountMode = state.authMode === 'account';
 
-    authModeGuestButton.classList.toggle('selected', !isAccountMode);
-    authModeAccountButton.classList.toggle('selected', isAccountMode);
+    authModeToggleButton.setAttribute('aria-expanded', String(isAccountMode));
     guestForm.classList.toggle('hidden', isAccountMode);
+    updateEntryMode();
     accountForm.classList.toggle('hidden', !isAccountMode);
+}
+
+// Entry screen state. currentRoom is the room this tab was last seated in (updated on
+// every 'joined', including rematch transfers) so a dropped connection can offer
+// "Rejoin game CODE" with the stored reconnect token. leaving marks a deliberate leave.
+const entryState = { currentRoom: '', leaving: false };
+let entryView = null;
+
+function refreshEntryView(reason) {
+    entryView = entryModeFor({
+        urlCode: readInviteCode(),
+        currentRoom: entryState.currentRoom,
+        reason,
+        hasStoredToken: code => Boolean(getStoredReconnectToken(code))
+    });
+    roomIdInput.value = entryView.code.toUpperCase();
+    updateEntryMode();
+}
+
+function updateEntryMode() {
+    if (!entryView) {
+        return;
+    }
+    const isAccountMode = state.authMode === 'account';
+    startRoomButton.textContent = entryView.primaryLabel;
+    // In invite/rejoin mode the primary button is the join action, so the code field is not needed.
+    // Account sign-in otherwise keeps the one code field; its own submit button replaces Join.
+    roomCodePanel.classList.toggle('hidden', !entryView.showCodePanel);
+    joinButton.classList.toggle('hidden', isAccountMode);
+    newGameLinkButton.classList.toggle('hidden', !entryView.showNewGameLink);
+    // An account seat is only restored by signing in again, so say so when rejoining.
+    authModeToggleButton.textContent = isAccountMode
+        ? 'Continue as guest'
+        : (entryView.showSignInHint ? 'Signed in before? Sign in to rejoin' : 'Sign in (optional)');
+}
+
+function startNewGameInstead() {
+    entryState.currentRoom = '';
+    clearRoomFromUrl();
+    refreshEntryView('reset');
+    setStatus('Not connected.');
 }
 
 function setAccountAction(nextAction) {
@@ -838,7 +889,7 @@ function setAccountAction(nextAction) {
     accountDisplayNameInput.classList.toggle('hidden', !isRegister);
     accountDisplayNameLabel.classList.toggle('hidden', !isRegister);
     accountPasswordInput.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
-    accountSubmitButton.textContent = isRegister ? 'Create Account & Join' : 'Sign In & Join';
+    accountSubmitButton.textContent = isRegister ? 'Create Account & Play' : 'Sign In & Play';
 }
 
 async function loginWithAccountCredentials() {
@@ -957,7 +1008,7 @@ function attachCopyButton(spanEl, getCode) {
 }
 
 function renderLobbyCode() {
-    const code = state.roomId || '-';
+    const code = (state.roomId || '-').toUpperCase();
     if (lobbyCodeText) {
         lobbyCodeText.textContent = code;
         attachCopyButton(lobbyCodeText, () => state.roomId || '');
@@ -1198,6 +1249,13 @@ function renderPlayers() {
             name.appendChild(selfTag);
         }
 
+        if (player.isBot) {
+            const botTag = document.createElement('span');
+            botTag.className = 'player-bot-tag';
+            botTag.textContent = 'computer';
+            name.appendChild(botTag);
+        }
+
         if (isEliminated) {
             const eliminatedTag = document.createElement('span');
             eliminatedTag.className = 'player-eliminated-tag';
@@ -1214,6 +1272,20 @@ function renderPlayers() {
         playerInfo.className = 'player-info';
 
         playerInfo.append(name);
+
+        if (player.isBot && state.phase === 'waiting' && state.roundNumber === 0 && !isSelfSpectator()) {
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'player-remove-button';
+            removeButton.textContent = 'remove';
+            removeButton.setAttribute('aria-label', `Remove computer player ${player.name}`);
+            removeButton.addEventListener('click', () => {
+                if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                    state.socket.send(JSON.stringify({ type: 'remove_bot', playerId: player.id }));
+                }
+            });
+            playerInfo.append(removeButton);
+        }
 
         if (shouldShowDiceInCards) {
             let diceDisplay;
@@ -1958,6 +2030,18 @@ function getResolutionKey(resolution, roundNumber = 0) {
 }
 
 function closeResolutionModal() {
+    const closedEventId = openResolutionEventId;
+    openResolutionEventId = null;
+    // No client-side dedupe: event ids restart at 0 for every new game/room, and a
+    // repeated reveal_done is a no-op on the server.
+    if (
+        Number.isInteger(closedEventId)
+        && state.socket
+        && state.socket.readyState === WebSocket.OPEN
+    ) {
+        state.socket.send(JSON.stringify({ type: 'reveal_done', eventId: closedEventId }));
+    }
+
     resolutionModal.classList.add('hidden');
     state.deferDiceRollUntilResolutionClose = false;
 
@@ -2054,6 +2138,8 @@ function openDudoRevealModal(resolution) {
     if (!resolution || !Array.isArray(resolution.revealedDice) || !resolution.bid) {
         return;
     }
+
+    openResolutionEventId = Number.isInteger(resolution.eventId) ? resolution.eventId : null;
 
     for (const playerDice of resolution.revealedDice) {
         ensurePlayerColor(playerDice.playerName, playerDice.playerId || '');
@@ -2200,6 +2286,12 @@ function updateActionAvailability() {
     chatToggleButton.disabled = !canChat;
     chatSendButton.disabled = !canChat;
     updateWaitingStartNotice();
+
+    waitingRoomPanel.classList.toggle('hidden', !showStartGame);
+    // Spectators cannot change the seating; the server rejects it, so don't offer it.
+    addBotButton.classList.toggle('hidden', isSelfSpectator());
+    addBotButton.disabled = !showStartGame || isSelfSpectator() || state.players.length >= MAX_SEATS;
+    inviteFriendsButton.disabled = !state.roomId;
 
     if (!canAct) {
         closeQuantityOverflowModal();
@@ -2524,15 +2616,29 @@ function applyStateUpdate(payload) {
     state.previousTurnPlayerId = state.currentTurnPlayerId;
 }
 
-async function connectToMatch() {
-    const guestName = playerNameInput.value.trim() || 'Player';
+// intent: 'create' always starts a new room; 'join' joins the code in the field (or invite);
+// 'auto' (account submit) joins if a code is present, otherwise starts a new room.
+async function connectToMatch(intent = 'auto') {
+    const guestName = playerNameInput.value.trim();
     const isAccountMode = state.authMode === 'account';
-    const roomId = isAccountMode
-        ? (roomIdAccountInput.value.trim() || 'lobby')
-        : (roomIdInput.value.trim() || 'lobby');
-    const reconnectToken = getStoredReconnectToken(roomId);
+    const entryCode = entryView && entryView.mode !== 'fresh' ? entryView.code : '';
+    const enteredCode = sanitizeRoomCode(entryCode || roomIdInput.value);
+    const isCreate = intent === 'create' || (intent === 'auto' && !enteredCode);
+    const roomId = isCreate ? '' : enteredCode;
     let joinName = guestName;
     let authToken = null;
+
+    if (!isAccountMode && !guestName) {
+        setStatus('Enter a name to join.');
+        return;
+    }
+
+    if (!isCreate && !roomId) {
+        setStatus('Enter a room code.');
+        return;
+    }
+
+    const reconnectToken = isCreate ? '' : getStoredReconnectToken(roomId);
 
     if (state.socket) {
         state.socket.close();
@@ -2550,7 +2656,7 @@ async function connectToMatch() {
                 ? await registerWithAccountCredentials()
                 : await loginWithAccountCredentials();
             authToken = authResult.token;
-            joinName = authResult.displayName || authResult.username || 'Player';
+            joinName = authResult.displayName || authResult.username;
             state.authToken = authToken;
         } catch (error) {
             setStatus(error.message || (state.accountAction === 'register' ? 'Account creation failed.' : 'Sign-in failed.'));
@@ -2565,7 +2671,10 @@ async function connectToMatch() {
     state.socket = socket;
 
     socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ type: 'join', name: joinName, roomId, authToken, reconnectToken }));
+        const message = isCreate
+            ? { type: 'create_room', name: joinName, authToken }
+            : { type: 'join', name: joinName, roomId, authToken, reconnectToken };
+        socket.send(JSON.stringify(message));
     });
 
     socket.addEventListener('message', event => {
@@ -2585,6 +2694,13 @@ async function connectToMatch() {
             state.reconnectToken = payload.reconnectToken || reconnectToken || null;
             if (state.reconnectToken && state.roomId) {
                 storeReconnectToken(state.roomId, state.reconnectToken);
+            }
+            if (state.roomId) {
+                entryState.currentRoom = state.roomId;
+                setRoomInUrl(state.roomId);
+            }
+            if (!isAccountMode) {
+                saveName(joinName);
             }
             state.rematchRequested = false;
             state.chatMessages = [];
@@ -2629,7 +2745,13 @@ async function connectToMatch() {
     });
 
     socket.addEventListener('close', () => {
-        if (state.isConnected) {
+        // A socket replaced by a newer connectToMatch() must not reset the new session.
+        if (state.socket !== socket) {
+            return;
+        }
+        const leftDeliberately = entryState.leaving;
+        entryState.leaving = false;
+        if (state.isConnected && !leftDeliberately) {
             showEventToast('Connection lost – attempting to reconnect…', 'dudo', { holdMs: 3500, exitMs: 700 });
         }
         state.isConnected = false;
@@ -2683,7 +2805,17 @@ async function connectToMatch() {
         setJoinState(true);
         setLeaveState(false);
         showJoinScreen();
-        setStatus('Disconnected. Join again.');
+        if (leftDeliberately) {
+            entryState.currentRoom = '';
+            clearRoomFromUrl();
+            refreshEntryView('left');
+            setStatus('You left the table.');
+        } else {
+            refreshEntryView('disconnected');
+            setStatus(entryView.mode === 'rejoin'
+                ? 'Disconnected. Rejoin to take your seat back.'
+                : 'Disconnected. Join again.');
+        }
         closeResolutionModal();
         closeVictoryModal();
         closeConfirmModal();
@@ -2706,6 +2838,7 @@ function leaveMatch() {
 
     openConfirmModal('Leave this table? You can rejoin from the lobby screen.', () => {
         clearStoredReconnectToken(state.roomId);
+        entryState.leaving = true;
         if (state.socket && state.socket.readyState === WebSocket.OPEN) {
             state.socket.send(JSON.stringify({ type: 'leave' }));
         }
@@ -2779,6 +2912,41 @@ function requestStartGame() {
     playTone(680, 95, 0.015, 'triangle');
 }
 
+function requestAddBot() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN || addBotButton.disabled) {
+        return;
+    }
+
+    state.socket.send(JSON.stringify({ type: 'add_bot' }));
+    playTone(680, 95, 0.015, 'triangle');
+}
+
+async function handleInviteFriends() {
+    if (!state.roomId) {
+        return;
+    }
+
+    const result = await shareInvite(state.roomId);
+    if (result === 'dismissed') {
+        // The player closed the share sheet; nothing went wrong.
+        return;
+    }
+    inviteLinkField.classList.toggle('hidden', result !== 'failed');
+    if (result === 'failed') {
+        inviteLinkField.value = buildInviteUrl(state.roomId, window.location.origin);
+        inviteLinkField.focus();
+        inviteLinkField.select();
+    }
+    const message = result === 'copied'
+        ? 'Link copied'
+        : (result === 'failed' ? "Couldn't copy the link" : '');
+    inviteFeedback.textContent = message;
+    clearTimeout(inviteFeedbackTimer);
+    if (message && result !== 'failed') {
+        inviteFeedbackTimer = setTimeout(() => { inviteFeedback.textContent = ''; }, 2500);
+    }
+}
+
 function requestJoinGame() {
     if (!state.socket || state.socket.readyState !== WebSocket.OPEN || startGameButton.disabled) {
         return;
@@ -2822,12 +2990,11 @@ function toggleMobileActionConsole() {
     setMobileActionConsoleOpen(!mobileActionConsoleOpen);
 }
 
-joinButton.addEventListener('click', connectToMatch);
-authModeGuestButton.addEventListener('click', () => {
-    setAuthMode('guest');
-});
-authModeAccountButton.addEventListener('click', () => {
-    setAuthMode('account');
+joinButton.addEventListener('click', () => connectToMatch('join'));
+startRoomButton.addEventListener('click', () => connectToMatch(entryView.mode === 'fresh' ? 'create' : 'join'));
+newGameLinkButton.addEventListener('click', startNewGameInstead);
+authModeToggleButton.addEventListener('click', () => {
+    setAuthMode(state.authMode === 'account' ? 'guest' : 'account');
 });
 accountActionLoginButton.addEventListener('click', () => {
     setAccountAction('login');
@@ -2835,14 +3002,14 @@ accountActionLoginButton.addEventListener('click', () => {
 accountActionRegisterButton.addEventListener('click', () => {
     setAccountAction('register');
 });
-accountSubmitButton.addEventListener('click', connectToMatch);
+accountSubmitButton.addEventListener('click', () => connectToMatch('auto'));
 playerNameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
         return;
     }
 
     event.preventDefault();
-    connectToMatch();
+    startRoomButton.click();
 });
 roomIdInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2850,7 +3017,7 @@ roomIdInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    joinButton.click();
 });
 accountUsernameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2858,7 +3025,7 @@ accountUsernameInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 accountPasswordInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2866,7 +3033,7 @@ accountPasswordInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 accountDisplayNameInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') {
@@ -2874,27 +3041,16 @@ accountDisplayNameInput.addEventListener('keydown', event => {
     }
 
     event.preventDefault();
-    connectToMatch();
-});
-roomIdAccountInput.addEventListener('keydown', event => {
-    if (event.key !== 'Enter') {
-        return;
-    }
-
-    event.preventDefault();
-    connectToMatch();
+    connectToMatch('auto');
 });
 roomIdInput.addEventListener('input', () => {
     roomIdInput.value = roomIdInput.value.toUpperCase();
-    roomIdAccountInput.value = roomIdInput.value;
-});
-roomIdAccountInput.addEventListener('input', () => {
-    roomIdAccountInput.value = roomIdAccountInput.value.toUpperCase();
-    roomIdInput.value = roomIdAccountInput.value;
 });
 leaveButton.addEventListener('click', leaveMatch);
 endGameButton.addEventListener('click', requestEndGame);
 startGameButton.addEventListener('click', handlePrimaryHeaderButtonClick);
+addBotButton.addEventListener('click', requestAddBot);
+inviteFriendsButton.addEventListener('click', handleInviteFriends);
 bidButton.addEventListener('click', placeBid);
 calzaButton.addEventListener('click', callCalza);
 dudoButton.addEventListener('click', callDudo);
@@ -2990,8 +3146,8 @@ confirmAcceptButton.addEventListener('click', () => {
 
 addTouchFeedback(joinButton);
 addTouchFeedback(accountSubmitButton);
-addTouchFeedback(authModeGuestButton);
-addTouchFeedback(authModeAccountButton);
+addTouchFeedback(authModeToggleButton);
+addTouchFeedback(startRoomButton);
 addTouchFeedback(accountActionLoginButton);
 addTouchFeedback(accountActionRegisterButton);
 addTouchFeedback(leaveButton);
@@ -3018,7 +3174,9 @@ setDarkMode(darkModeToggle.checked);
 state.ui.filterProfanities = profanityToggle.checked;
 turnTimerToggle.checked = state.ui.turnTimerEnabled;
 setPasswordVisibility(false);
+refreshEntryView('load');
 setAuthMode('guest');
+playerNameInput.value = loadSavedName();
 setAccountAction('login');
 setLeaveState(false);
 updateActionAvailability();

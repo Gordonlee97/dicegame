@@ -23,10 +23,16 @@ class PerudoGame {
     }
 
     findPlayerBySocket(ws) {
+        if (!ws) {
+            return null;
+        }
         return this.players.find(player => player.ws === ws) || null;
     }
 
     findPlayerIndexBySocket(ws) {
+        if (!ws) {
+            return -1;
+        }
         return this.players.findIndex(player => player.ws === ws);
     }
 
@@ -289,6 +295,7 @@ class PerudoGame {
                 name: item.name,
                 diceCount: item.diceCount,
                 isSpectator: Boolean(item.isSpectator),
+                isBot: Boolean(item.isBot),
                 isDisconnected: Boolean(item.isDisconnected),
                 isEliminated: !item.isSpectator && item.diceCount <= 0
             })),

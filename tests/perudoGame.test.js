@@ -393,3 +393,13 @@ test('palifico resolution matching mask excludes ones for non-one bid faces', ()
     assert.deepEqual(aliceReveal.matchingMask, [false]);
     assert.deepEqual(bobReveal.matchingMask, [true]);
 });
+
+test('findPlayerBySocket ignores null sockets', () => {
+    const game = createGame([]);
+
+    game.players.push({ id: 'a', name: 'A', ws: null });
+    game.players.push({ id: 'b', name: 'B', ws: {} });
+
+    assert.equal(game.findPlayerBySocket(null), null);
+    assert.equal(game.findPlayerIndexBySocket(null), -1);
+});
