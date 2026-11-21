@@ -652,7 +652,7 @@ class GameManager {
         }
 
         if (context.player.isSpectator) {
-            this.send(ws, { type: 'error', message: 'Spectators cannot add computer players.' });
+            this.send(ws, { type: 'error', message: 'Spectators cannot change computer players.' });
             return;
         }
 
@@ -1256,6 +1256,11 @@ class GameManager {
 
         const joined = this.transferPlayerToRoom(ws, playerProfile, targetRoomId);
         if (!joined) {
+            // The target was seeded with bots before the transfer; do not leave a bots-only room behind.
+            const targetGame = this.games.get(targetRoomId);
+            if (targetGame && !this.hasHumans(targetGame)) {
+                this.deleteRoom(targetRoomId);
+            }
             this.send(ws, { type: 'error', message: 'Failed to join rematch room.' });
         }
     }

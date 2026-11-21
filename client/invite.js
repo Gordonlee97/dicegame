@@ -30,6 +30,7 @@ export function setRoomInUrl(code) {
     }
 }
 
+// Returns 'shared' | 'copied' | 'dismissed' (user closed the share sheet) | 'failed'.
 export async function shareInvite(code, origin, nav) {
     const url = buildInviteUrl(code, origin);
     try {
@@ -42,8 +43,10 @@ export async function shareInvite(code, origin, nav) {
             await nv.clipboard.writeText(url);
             return 'copied';
         }
-    } catch {
-        // fall through
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            return 'dismissed';
+        }
     }
     return 'failed';
 }

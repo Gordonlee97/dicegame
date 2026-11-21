@@ -468,6 +468,58 @@ test('spectators cannot add computer players', () => {
     });
 });
 
+test('spectators cannot remove computer players', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    manager.handleStartGame(wsAnn);
+    const wsLate = joinRoom(manager, 'Late', 'r1');
+    const bot = manager.games.get('r1').players.find(player => player.isBot);
+
+    sent.length = 0;
+    manager.handleRemoveBot(wsLate, { playerId: bot.id });
+
+    assert.deepEqual(sent[sent.length - 1].payload, {
+        type: 'error',
+        message: 'Spectators cannot change computer players.'
+    });
+});
+
+test('failed rematch transfer does not leave a bots-only room behind', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    manager.handleAddBot(wsAnn);
+    const oldGame = manager.games.get('r1');
+    oldGame.round.setGameOver(oldGame.players[0].id);
+    manager.transferPlayerToRoom = () => false;
+
+    manager.handleRematch(wsAnn);
+
+    const targetRoomId = oldGame.rematchRoomId;
+    assert.ok(targetRoomId);
+    assert.equal(manager.games.has(targetRoomId), false);
+    assert.equal(sent[sent.length - 1].payload.message, 'Failed to join rematch room.');
+});
+
+test('failed rematch transfer keeps a target room that already has humans', () => {
+    const sent = [];
+    const manager = createManager(sent);
+    const wsAnn = joinRoom(manager, 'Ann', 'r1');
+    const wsBob = joinRoom(manager, 'Bob', 'r1');
+    manager.handleAddBot(wsAnn);
+    const oldGame = manager.games.get('r1');
+    oldGame.round.setGameOver(oldGame.players[0].id);
+    manager.handleRematch(wsAnn);
+    const targetRoomId = manager.clientToRoom.get(wsAnn);
+    manager.transferPlayerToRoom = () => false;
+
+    manager.handleRematch(wsBob);
+
+    assert.equal(manager.games.has(targetRoomId), true);
+});
+
 test('remove_bot removes only bots', () => {
     const sent = [];
     const manager = createManager(sent);

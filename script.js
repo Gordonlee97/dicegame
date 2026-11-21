@@ -1245,7 +1245,7 @@ function renderPlayers() {
 
         playerInfo.append(name);
 
-        if (player.isBot && state.phase === 'waiting' && state.roundNumber === 0) {
+        if (player.isBot && state.phase === 'waiting' && state.roundNumber === 0 && !isSelfSpectator()) {
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'player-remove-button';
@@ -2260,7 +2260,9 @@ function updateActionAvailability() {
     updateWaitingStartNotice();
 
     waitingRoomPanel.classList.toggle('hidden', !showStartGame);
-    addBotButton.disabled = !showStartGame || state.players.length >= MAX_SEATS;
+    // Spectators cannot change the seating; the server rejects it, so don't offer it.
+    addBotButton.classList.toggle('hidden', isSelfSpectator());
+    addBotButton.disabled = !showStartGame || isSelfSpectator() || state.players.length >= MAX_SEATS;
     inviteFriendsButton.disabled = !state.roomId;
 
     if (!canAct) {
@@ -2878,6 +2880,10 @@ async function handleInviteFriends() {
     }
 
     const result = await shareInvite(state.roomId);
+    if (result === 'dismissed') {
+        // The player closed the share sheet; nothing went wrong.
+        return;
+    }
     inviteLinkField.classList.toggle('hidden', result !== 'failed');
     if (result === 'failed') {
         inviteLinkField.value = buildInviteUrl(state.roomId, window.location.origin);
